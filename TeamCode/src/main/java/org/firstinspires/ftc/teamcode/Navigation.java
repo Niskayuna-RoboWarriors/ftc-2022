@@ -4,16 +4,11 @@
 package org.firstinspires.ftc.teamcode;
 
 
-import android.os.Environment;
-import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.Gamepad;
+import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
-import java.io.FileOutputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Objects;
 
 
@@ -25,133 +20,99 @@ public class Navigation
 
     // AUTON CONSTANTS
     // ===============
-    public enum MovementMode {FORWARD_ONLY, STRAFE}
-
-    static final double STRAFE_RAMP_DISTANCE = 3;  // Inches
-    static final double ROTATION_RAMP_DISTANCE = Math.PI / 3;  // Radians
-    static final double MAX_STRAFE_POWER = 0.95;
-    static final double MIN_STRAFE_POWER = 0.5;
-    static final double STRAFE_CORRECTION_POWER = 0.3;
-    static final double MAX_ROTATION_POWER = 0.5;
-    static final double MIN_ROTATION_POWER = 0.4;
-    static final double ROTATION_CORRECTION_POWER = 0.2;
+    final double STRAFE_ACCELERATION = 0.1;  // Inches per second per second
+    final double ROTATE_ACCELERATION = 0.1;
+    // How many inches per second the robot goes at when moving forward with all motors set to full power.
+    // TODO: empirically measure this value.
+    final double SPEED_FACTOR = 1.0;
+    final double ROTATION_RADIUS = 1.0; // Radius of the robot's rotation (still needs to be calculated)
+    final double MAX_STRAFE_POWER = 1.0;
+    final double MIN_STRAFE_POWER = 0.2;
+    final double MAX_ROTATE_POWER = 0.5;
+    final double MIN_ROTATE_POWER = 0.1;
+    final boolean ROTATIONAL_RAMPING = false;
+    final double STRAFE_RAMP_DISTANCE = 1.0;
+    final double ROTATION_RAMP_DISTANCE = 1.0;
     // Accepted amounts of deviation between the robot's desired position and actual position.
-    static final double EPSILON_LOC = 1.4;
-    static final double EPSILON_ANGLE = 0.19;
-    // The number of frames to wait after a rotate or travelLinear call in order to check for movement from momentum.
-    static final int NUM_CHECK_FRAMES = 10;
-
-    // Distance between starting locations on the warehouse side and the carousel side.
-    static final double DISTANCE_BETWEEN_START_POINTS = 35.25;
-    static final double RED_BARCODE_OFFSET = 0;
+    final double EPSILON_LOC = 1.0;
+    final double EPSILON_ANGLE = 0.08;
+    final int EPSILON_ENCODERS = 30;
 
     // Distances between where the robot extends/retracts the linear slides and where it opens the claw.
-    static final double CLAW_SIZE = 8.9;
-
-    static final double FLOAT_EPSILON = 0.001;
-
-    public MovementMode movementMode;
+    final double CLAW_SIZE = 2.0;
 
     // TELEOP CONSTANTS
     // ================
-    static final double MOVEMENT_MAX_POWER = 1.0;
-    static final double ROTATION_POWER = 0.8;
-    static final double FINE_MOVEMENT_SCALE_FACTOR = 0.5;
-    static final double ULTRA_FINE_MOVEMENT_SCALE_FACTOR = 0.25;
+    final double COARSE_MOVEMENT_MAX_POWER = 1.0;
+    final double FINE_MOVEMENT_MAX_POWER = 0.5;
+    final double COARSE_ROTATION_POWER = 0.8;
+    final double FINE_ROTATION_POWER = 0.4;
 
     // INSTANCE ATTRIBUTES
     // ===================
 
     // Speeds relative to one another.
     //                              RL   RR   FL   FR
-    public double[] wheel_speeds = {1.0, 1.0, 1.0, 1.0};
+    public double[] wheel_speeds = {0.67, 0.67, 1.0, 1.0};
     public double strafePower;  // Tele-Op only
 
     // First position in this ArrayList is the first position that robot is planning to go to.
     // This condition must be maintained (positions should be deleted as the robot travels)
     // NOTE: a position is both a location and a rotation.
     // NOTE: this can be changed to a stack later if appropriate (not necessary for speed, just correctness).
-    public ArrayList<Position> path;
-    public int pathIndex;
+    private ArrayList<Position> path;
 
-    public Navigation(ArrayList<Position> path, RobotManager.AllianceColor allianceColor,
-                      RobotManager.StartingSide startingSide, MovementMode movementMode) {
+    public Navigation(ArrayList<Position> path, RobotManager.AllianceColor allianceColor) {
         this.path = path;
-        this.movementMode = movementMode;
-        pathIndex = 0;
-        transformPath(allianceColor, startingSide);
+
+        if (allianceColor == RobotManager.AllianceColor.RED) {
+            reflectPath();
+        }
+    }
+
+    /** Adds a desired position to the path.
+     */
+    public void addPosition(Position pos) {
+        path.add(pos);
+    }
+
+    /** Adds a desired position to the path at a specific index.
+     */
+    public void addPosition(Position pos, int index) {
+        path.add(index, pos);
     }
 
     /** Makes the robot travel along the path until it reaches a POI.
      */
-    public Position travelToNextPOI(Robot robot) {
+    public void travelToNextPOI(Robot robot) {
         while (true) {
-            if (path.size() <= pathIndex) {
-                return null;
-            }
-            Position target = path.get(pathIndex);
-            robot.positionManager.updatePosition(robot);
-            robot.telemetry.addData("Going to", target.getX() + ", " + target.getY());
-            robot.telemetry.update();
-            switch (movementMode) {
-                case FORWARD_ONLY:
-                    rotate(getAngleBetween(robot.getPosition().getLocation(), target.getLocation()) - Math.PI / 2,
-                            target.getLocation().rotatePower, robot);
-                    travelLinear(target.getLocation(), target.getLocation().strafePower, robot);
-                    rotate(target.getRotation(), target.getLocation().rotatePower, robot);
-                    break;
-                case STRAFE:
-                    travelLinear(target.getLocation(), target.getLocation().strafePower, robot);
-                    rotate(target.getRotation(), target.getLocation().rotatePower, robot);
-                    break;
-            }
-
-            pathIndex++;
+            Position target = path.get(0);
+            travelLinear(target.getLocation(), robot);
+            rotate(target.getRotation(), ROTATIONAL_RAMPING, robot);
+            path.remove(0);
 
             robot.telemetry.addData("Got to", target.getLocation().name);
             robot.telemetry.update();
 
             if (target.getLocation().name.length() >= 3 && target.getLocation().name.substring(0, 3).equals("POI")) break;
         }
-        return path.get(pathIndex - 1);
     }
 
     /** Updates the strafe power according to movement mode and gamepad 1 left trigger.
      *
      *  @return Whether the strafe power is greater than zero.
      */
-    public void updateStrafePower(boolean hasMovementDirection, GamepadWrapper gamepads, Robot robot) {
-        if (!hasMovementDirection) {
-            strafePower = 0;
+    public void updateStrafePower(AnalogValues analogValues, Robot robot) {
+        double throttle = analogValues.gamepad1LeftTrigger;
+        if (throttle < 0.05) {  // Throttle dead zone.
+            strafePower = 0.0;
             return;
         }
-
-        AnalogValues analogValues = gamepads.getAnalogValues();
-
-        double throttle = analogValues.gamepad1RightTrigger;
-        if (throttle < RobotManager.TRIGGER_DEAD_ZONE_SIZE) {  // Throttle dead zone.
-            // Determine power scale factor using constant from distance of joystick from center.
-            double distance = Range.clip(Math.sqrt(Math.pow(analogValues.gamepad1RightStickX, 2)
-                    + Math.pow(analogValues.gamepad1LeftStickY, 2)), 0, 1);
-            if (distance <= RobotManager.JOYSTICK_DEAD_ZONE_SIZE) {  // joystick dead zone
-                // Joystick is not used, but hasMovementDirection is true, so one of the straight movement buttons must
-                // have been pressed.
-                strafePower = MOVEMENT_MAX_POWER;
-            } else {
-                strafePower = distance * MOVEMENT_MAX_POWER;
-            }
+        if (robot.fineMovement) {
+            strafePower = throttle * FINE_MOVEMENT_MAX_POWER;
         }
         else {
-            strafePower = throttle * MOVEMENT_MAX_POWER;
-        }
-
-        switch (robot.movementMode) {
-            case FINE:
-                strafePower *= FINE_MOVEMENT_SCALE_FACTOR;
-                break;
-            case ULTRA_FINE:
-                strafePower *= ULTRA_FINE_MOVEMENT_SCALE_FACTOR;
-                break;
+            strafePower = throttle * COARSE_MOVEMENT_MAX_POWER;
         }
     }
 
@@ -198,90 +159,69 @@ public class Navigation
 
     /** Changes drivetrain motor inputs based off the controller inputs.
      */
-    public void maneuver(AnalogValues analogValues, boolean turnCC, boolean turnC, Robot robot) {
+    public void maneuver(AnalogValues analogValues, Robot robot) {
         // Uses left stick to go forward, and right stick to turn.
         // NOTE: right-side drivetrain motor inputs don't have to be negated because their directions will be reversed
         //       upon initialization.
 
-        double turn = -analogValues.gamepad1LeftStickX;
-        if (turnCC) {
-            turn = -ROTATION_POWER;
-        }
-        if (turnC) {
-            turn = ROTATION_POWER;
-        }
-        if (-RobotManager.JOYSTICK_DEAD_ZONE_SIZE < turn && turn < RobotManager.JOYSTICK_DEAD_ZONE_SIZE) {
+        double turn = analogValues.gamepad1RightStickX;
+        if (-0.05 < turn && turn < 0.05) {  // joystick dead zone
             turn = 0;
         }
-        switch (robot.movementMode) {
-            case FINE:
-                turn *= FINE_MOVEMENT_SCALE_FACTOR;
-                break;
-            case ULTRA_FINE:
-                turn *= ULTRA_FINE_MOVEMENT_SCALE_FACTOR;
-                break;
+        if (robot.fineRotation) {
+            turn *= FINE_ROTATION_POWER;
+        }
+        else {
+            turn *= COARSE_ROTATION_POWER;
         }
 
-        double moveDirection = Math.atan2(analogValues.gamepad1LeftStickY, analogValues.gamepad1RightStickX);
+        double moveDirection = Math.atan2(analogValues.gamepad1LeftStickY, analogValues.gamepad1LeftStickX);
         setDriveMotorPowers(moveDirection, strafePower, turn, robot, false);
+        robot.telemetry.addData("Left Stick Position",Math.toDegrees(moveDirection) + " degrees");
     }
 
     /** Rotates the robot a number of degrees.
      *
      * @param target The orientation the robot should assume once this method exits.
      *               Within the interval (-pi, pi].
-     * @param constantPower A hard-coded power value for the method to use instead of ramping. Ignored if set to zero.
+     * @param ramping Whether to use ramping.
      */
-    public void rotate(double target, double constantPower, Robot robot)
+    public void rotate(double target, boolean ramping, Robot robot)
     {
         robot.positionManager.updatePosition(robot);
         // Both values are restricted to interval (-pi, pi].
         final double startOrientation = robot.getPosition().getRotation();
         double currentOrientation = startOrientation;  // Copies by value because double is primitive.
+        double startingTime = robot.elapsedTime.milliseconds();
 
         double rotationSize = getRotationSize(startOrientation, target);
+        double halfRotateTime = getHalfRotateTime(rotationSize);
 
-        double power;
-        boolean ramping = true;
-        if (Math.abs(constantPower - 0) > FLOAT_EPSILON) {
-            power = constantPower;
-            ramping = false;
-        }
-        else {
-            power = MIN_ROTATION_POWER;
-        }
-        double rotationRemaining = getRotationSize(currentOrientation, target);
+        double power = MIN_ROTATE_POWER;  // If ramping is false, power will stay at this value.
         double rotationProgress = getRotationSize(startOrientation, currentOrientation);
-        boolean finishedRotation = false;
-        int numFramesSinceLastFailure = 0;
-        boolean checkFrames = false;
+        double rotationRemaining = getRotationSize(currentOrientation, target);
+        double timeElapsed = 0;
+        double timeLeft = 2 * halfRotateTime - timeElapsed;
 
-        while (!finishedRotation) {
+        while (timeElapsed < 2 * halfRotateTime) {
             robot.telemetry.addData("rot left", rotationRemaining);
             robot.telemetry.addData("current orientation", currentOrientation);
             robot.telemetry.addData("target", target);
             robot.telemetry.update();
 
             if (ramping) {
-                if (rotationProgress < rotationSize / 2) {
+                if (timeElapsed < halfRotateTime) {
                     // Ramping up.
-                    if (rotationProgress <= ROTATION_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (rotationProgress / ROTATION_RAMP_DISTANCE) * MAX_ROTATION_POWER,
-                                MIN_ROTATION_POWER, MAX_ROTATION_POWER);
-                    }
-                } else {
-                    // Ramping down.
-                    if (rotationRemaining <= ROTATION_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (rotationRemaining / ROTATION_RAMP_DISTANCE) * MAX_ROTATION_POWER,
-                                MIN_ROTATION_POWER, MAX_ROTATION_POWER);
-                    }
+                    power = Range.clip(
+                            (timeElapsed / halfRotateTime) * MAX_ROTATE_POWER,
+                            MIN_ROTATE_POWER, MAX_ROTATE_POWER);
                 }
-            }
-
-            if (checkFrames) {
-                power = ROTATION_CORRECTION_POWER;
+                else {
+                    // Ramping down.
+                    power = Range.clip(
+                            (timeLeft / halfRotateTime) * MAX_ROTATE_POWER,
+                            MIN_ROTATE_POWER, MAX_ROTATE_POWER);
+                }
             }
 
             switch (getRotationDirection(currentOrientation, target)) {
@@ -296,18 +236,10 @@ public class Navigation
             robot.positionManager.updatePosition(robot);
             currentOrientation = robot.getPosition().getRotation();
 
-            rotationRemaining = getRotationSize(currentOrientation, target);
             rotationProgress = getRotationSize(startOrientation, currentOrientation);
-
-            if (rotationRemaining > EPSILON_ANGLE) {
-                numFramesSinceLastFailure = 0;
-            } else {
-                checkFrames = true;
-                numFramesSinceLastFailure++;
-                if (numFramesSinceLastFailure >= NUM_CHECK_FRAMES) {
-                    finishedRotation = true;
-                }
-            }
+            rotationRemaining = getRotationSize(currentOrientation, target);
+            timeElapsed = robot.elapsedTime.milliseconds()-startingTime;
+            timeLeft = 2 * halfRotateTime - timeElapsed;
         }
 
         stopMovement(robot);
@@ -336,107 +268,121 @@ public class Navigation
     /** Makes the robot travel in a straight line for a certain distance.
      *
      *  @param target The desired position of the robot.
-     *  @param constantPower A hard-coded power value for the method to use instead of ramping. Ignored if set to zero.
      */
-    public void travelLinear(Point target, double constantPower, Robot robot) {
+    public void travelLinear(Point target, Robot robot) {
         robot.positionManager.updatePosition(robot);
         final Point startLoc = robot.getPosition().getLocation();
-        Point currentLoc;
+        Point currentLoc = new Point(startLoc.x, startLoc.y, "current");
+        double startingTime = robot.elapsedTime.milliseconds();
 
         double totalDistance = getEuclideanDistance(startLoc, target);
+        double halfStrafeTime = getHalfStrafeTime(totalDistance, getAngleBetween(startLoc, target));
 
-        double power;
-        boolean ramping = true;
-        if (Math.abs(constantPower - 0.0) > FLOAT_EPSILON) {
-            power = constantPower;
-            ramping = false;
-        }
-        else {
-            power = MIN_STRAFE_POWER;
-        }
-        double distanceToTarget;
-        double distanceTraveled;
-        boolean finishedTravel = false;
-        double numFramesSinceLastFailure = 0;
-        boolean checkFrames = false;
+        double power = MIN_STRAFE_POWER;
+        double distanceTraveled = getEuclideanDistance(startLoc, currentLoc);
+        double distanceRemaining = getEuclideanDistance(currentLoc, target);
+        double timeElapsed = 0;
+        double timeLeft = 2 * halfStrafeTime - timeElapsed;
 
-        while (!finishedTravel) {
+        while (timeElapsed < 2 * halfStrafeTime) {
+
+            if (timeElapsed < halfStrafeTime) {
+                // Ramping up.
+                power = Range.clip(
+                        (timeElapsed / halfStrafeTime) * MAX_STRAFE_POWER,
+                        MIN_STRAFE_POWER, MAX_STRAFE_POWER);
+            }
+            else {
+                // Ramping down.
+                power = Range.clip(
+                        (timeLeft / halfStrafeTime) * MAX_STRAFE_POWER,
+                        MIN_STRAFE_POWER, MAX_STRAFE_POWER);
+            }
+
+            setDriveMotorPowers(getAngleBetween(currentLoc, target), power, 0.0, robot, false);
 
             robot.positionManager.updatePosition(robot);
             currentLoc = robot.getPosition().getLocation();
 
-            distanceToTarget = getEuclideanDistance(currentLoc, target);
             distanceTraveled = getEuclideanDistance(startLoc, currentLoc);
+            distanceRemaining = getEuclideanDistance(currentLoc, target);
+            timeElapsed = robot.elapsedTime.milliseconds()-startingTime;
+            timeLeft = 2 * halfStrafeTime - timeElapsed;
 
-            if (ramping) {
-                if (distanceTraveled < totalDistance / 2) {
-                    // Ramping up.
-                    if (distanceTraveled <= STRAFE_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (distanceTraveled / STRAFE_RAMP_DISTANCE) * MAX_STRAFE_POWER,
-                                MIN_STRAFE_POWER, MAX_STRAFE_POWER);
-                    }
-                } else {
-                    // Ramping down.
-                    if (distanceToTarget <= STRAFE_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (distanceToTarget / STRAFE_RAMP_DISTANCE) * MAX_STRAFE_POWER,
-                                MIN_STRAFE_POWER, MAX_STRAFE_POWER);
-                    }
-                }
-            }
-
-            if (checkFrames) {
-                power = STRAFE_CORRECTION_POWER;
-            }
-
-            double strafeAngle = getStrafeAngle(currentLoc, robot.getPosition().getRotation(), target);
-
-            setDriveMotorPowers(strafeAngle, power, 0.0, robot, false);
-
-//            robot.telemetry.addData("X", startLoc.x);
-//            robot.telemetry.addData("Y", startLoc.y);
-//            robot.telemetry.addData("X", currentLoc.x);
-//            robot.telemetry.addData("Y", currentLoc.y);
-
-
-//
-//            robot.telemetry.addData("tX", target.x);
-//            robot.telemetry.addData("tY", target.y);
-//            robot.telemetry.addData("Strafe angle", getAngleBetween(currentLoc, target));
-//            robot.telemetry.update();
-
-            if (distanceToTarget > EPSILON_LOC) {
-                numFramesSinceLastFailure = 0;
-            }
-            else {
-                checkFrames = true;
-                numFramesSinceLastFailure++;
-                if (numFramesSinceLastFailure >= NUM_CHECK_FRAMES) {
-                    finishedTravel = true;
-                }
-            }
+            robot.telemetry.addData("X", currentLoc.x);
+            robot.telemetry.addData("Y", currentLoc.y);
+            robot.telemetry.addData("dX", target.x);
+            robot.telemetry.addData("dY", target.y);
+            robot.telemetry.update();
         }
-
         stopMovement(robot);
     }
 
-    /** Calculates the angle at which the robot must strafe in order to get to a target location.
+    /** Calculates the speed of the robot when strafing given the direction of strafing and the strafing speed
+     *
+     *  @param strafeAngle the direction (angle) in which the robot should strafe
+     *  @param power the strafing speed of the robot
+     *  @return the speed of the robot
      */
-    private double getStrafeAngle(Point currentLoc, double currentOrientation, Point target) {
-        double strafeAngle = currentOrientation - getAngleBetween(currentLoc, target);
-        if (strafeAngle > Math.PI) {
-            strafeAngle -= 2 * Math.PI;
+    private double getRobotSpeed(double strafeAngle, double power) {
+        double powerSet1 = Math.sin(strafeAngle) + Math.cos(strafeAngle);
+        double powerSet2 = Math.sin(strafeAngle) - Math.cos(strafeAngle);
+        double[] rawPowers = scaleRange(powerSet1, powerSet2);
+
+        if (strafeAngle > -Math.PI/2 && strafeAngle < Math.PI/2) {
+            return (SPEED_FACTOR * power * Math.sqrt(2 * Math.pow(rawPowers[1]/rawPowers[0], 2) + 2)) / 2;
         }
-        else if (strafeAngle < -Math.PI) {
-            strafeAngle += 2 * Math.PI;
+        else {
+            return (SPEED_FACTOR * power * Math.sqrt(2 * Math.pow(rawPowers[0]/rawPowers[1], 2) + 2)) / 2;
         }
-        return strafeAngle;
+    }
+
+    /** Calculates half the amount of time it is estimated for a linear strafe to take.
+     *
+     *  @param distance the distance of the strafe
+     *  @param strafeAngle the angle of the strafe
+     */
+    private double getHalfStrafeTime(double distance, double strafeAngle) {
+        // Inches per second is probably a good unit.
+        double min_strafe_speed = getRobotSpeed(strafeAngle, MIN_STRAFE_POWER);
+        double max_strafe_speed = getRobotSpeed(strafeAngle, MAX_STRAFE_POWER);
+
+        double ramp_distance = (max_strafe_speed + min_strafe_speed) / 2
+                             * (max_strafe_speed - min_strafe_speed) / STRAFE_ACCELERATION;
+        if (distance / 2 >= ramp_distance) {
+            return (distance / 2 - ramp_distance) / max_strafe_speed
+                 + (max_strafe_speed - min_strafe_speed) / STRAFE_ACCELERATION;
+        }
+        else {  // We never get to max_strafe_speed
+            return (-min_strafe_speed + Math.sqrt(Math.pow(min_strafe_speed, 2) + distance * STRAFE_ACCELERATION))
+                 / 0.5 * STRAFE_ACCELERATION;
+        }
+    }
+
+    /** Calculates half the amount of time it is estimated for a rotation to take.
+     *
+     *  @param angle The angle of the rotation
+     */
+    private double getHalfRotateTime(double angle) {
+        // Get this in inches per second but convert to radians per second
+        double min_rotate_speed = (SPEED_FACTOR * MIN_ROTATE_POWER) / ROTATION_RADIUS;
+        double max_rotate_speed = (SPEED_FACTOR * MAX_ROTATE_POWER) / ROTATION_RADIUS;
+
+        double ramp_angle = (max_rotate_speed + min_rotate_speed) / 2
+                * (max_rotate_speed - min_rotate_speed) / ROTATE_ACCELERATION;
+        if (distance / 2 >= ramp_angle) {
+            return (distance / 2 - ramp_angle) / max_rotate_speed
+                    + (max_rotate_speed - min_rotate_speed) / ROTATE_ACCELERATION;
+        }
+        else {  // We never get to max_rotate_speed
+            return (-min_rotate_speed + Math.sqrt(Math.pow(min_rotate_speed, 2) + angle * ROTATE_ACCELERATION))
+                    / 0.5 * ROTATE_ACCELERATION;
+        }
     }
 
     /** Determines the angle between the horizontal axis and the segment connecting A and B.
      */
-    private double getAngleBetween(Point a, Point b) { return Math.atan2((b.y - a.y), (b.x - a.x)); }
+    private double getAngleBetween(Point a, Point b) { return -Math.atan2((b.y - a.y), (b.x - a.x)); }
 
     /** Calculates the euclidean distance between two points.
      *
@@ -448,26 +394,12 @@ public class Navigation
         return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
     }
 
-    /** Transforms the robot's path based on the alliance color and side of the field it is starting on.
+    /** Reflects the path to the other side of the playing field.
      */
-    private void transformPath(RobotManager.AllianceColor allianceColor, RobotManager.StartingSide startingSide) {
-        for (int i = 0; i < path.size(); i++) {
-            Position pos = path.get(i);
-            Position copy = new Position(
-                    new Point(pos.getX(), pos.getY(), pos.getLocation().name, pos.getLocation().action,
-                              pos.getLocation().strafePower, pos.getLocation().rotatePower),
-                    pos.getRotation());
-            if (allianceColor == RobotManager.AllianceColor.RED) {
-                copy.setY(-copy.getY() + RED_BARCODE_OFFSET);
-                if (startingSide == RobotManager.StartingSide.WAREHOUSE) {
-                    copy.setY(copy.getY() + DISTANCE_BETWEEN_START_POINTS);
-                }
-                copy.setRotation((copy.getRotation() + Math.PI) * -1);
-            }
-            else if (startingSide == RobotManager.StartingSide.WAREHOUSE) {
-                copy.setY(copy.getY() - DISTANCE_BETWEEN_START_POINTS);
-            }
-            path.set(i, copy);
+    private void reflectPath() {
+        for (Position pos : path) {
+            pos.setX(144.0 - pos.getX());
+            pos.setRotation(Math.PI - pos.getRotation());
         }
     }
 
@@ -478,16 +410,11 @@ public class Navigation
      *               you only want the robot to rotate.
      *  @param turn the speed at which the robot should rotate (clockwise). Must be in the interval [-1, 1]. Set this to
      *              zero if you only want the robot to strafe.
+     *  TODO: take empirical measurements required for this
+     *  @return the speed (inches/second) that the robot will be moving at after the motor powers are set by this method.
      */
-    private void setDriveMotorPowers(double strafeDirection, double power, double turn, Robot robot, boolean debug) {
-        for (RobotConfig.DriveMotors motor : RobotConfig.DriveMotors.values()) {
-            Objects.requireNonNull(robot.driveMotors.get(motor)).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
-        }
-
-        robot.telemetry.addData("turn %.2f", turn);
-        if (Math.abs(power - 0) < FLOAT_EPSILON && Math.abs(turn - 0) < FLOAT_EPSILON) {
-            stopMovement(robot);
-        }
+    private double setDriveMotorPowers(double strafeDirection, double power, double turn, Robot robot, boolean debug) {
+//        strafeDirection *= -1;
         double sinMoveDirection = Math.sin(strafeDirection);
         double cosMoveDirection = Math.cos(strafeDirection);
 
@@ -500,23 +427,20 @@ public class Navigation
         robot.telemetry.addData("Rear Motors", "left (%.2f), right (%.2f)",
                 (rawPowers[1] * power + turn) * wheel_speeds[0], (rawPowers[0] * power - turn) * wheel_speeds[1]);
 
-        if (debug) {
-            double start = robot.elapsedTime.milliseconds();
-            while (robot.elapsedTime.milliseconds() - start > 100) {}
-            return;
-        };
+        if (debug) return 0.0;
 
         robot.driveMotors.get(RobotConfig.DriveMotors.REAR_LEFT).setPower((rawPowers[1] * power - turn) * wheel_speeds[0]);
         robot.driveMotors.get(RobotConfig.DriveMotors.REAR_RIGHT).setPower((rawPowers[0] * power + turn) * wheel_speeds[1]);
         robot.driveMotors.get(RobotConfig.DriveMotors.FRONT_LEFT).setPower((rawPowers[0] * power - turn) * wheel_speeds[2]);
         robot.driveMotors.get(RobotConfig.DriveMotors.FRONT_RIGHT).setPower((rawPowers[1] * power + turn) * wheel_speeds[3]);
+
+        return 0.0;
     }
 
     /** Sets all drivetrain motor powers to zero.
      */
-    public void stopMovement(Robot robot) {
+    private void stopMovement(Robot robot) {
         for (RobotConfig.DriveMotors motor : RobotConfig.DriveMotors.values()) {
-            Objects.requireNonNull(robot.driveMotors.get(motor)).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             Objects.requireNonNull(robot.driveMotors.get(motor)).setPower(0.0);
         }
     }
@@ -811,104 +735,10 @@ public class Navigation
 /** Hardcoded paths through the playing field during the Autonomous period.
  */
 class AutonomousPaths {
-    // Coordinates relative to starting location close to carousel.
-    public static final Position allianceShippingHub =
-            new Position(new Point(11, 20, "POI shipping hub",
-                    Point.Action.PRELOAD_BOX, 0, 0), -Math.PI / 2);
-    public static final Position allianceStorageUnit =
-            new Position(new Point(19, -18, "POI alliance storage unit"), 0);
-    public static final Position carousel =
-            new Position(new Point(4, -13.5, "POI carousel", Point.Action.CAROUSEL,
-                    Navigation.STRAFE_CORRECTION_POWER, Navigation.ROTATION_CORRECTION_POWER), -Math.PI / 6);
-    public static final Position warehouse =
-            new Position(new Point(10, 50, "POI warehouse"), 0);
-
-    public static final Position out_from_carousel =
-            new Position(new Point(
-                    carousel.getX() + 2, carousel.getY() + 3, "out from carousel"), -Math.PI / 6);
-                    //                   6,                      -11,
-
-
-    public static final Position backed_up_from_ASH =
-            new Position(new Point(
-                    allianceShippingHub.getX() - 5, allianceShippingHub.getY(),
-                    "backed up from shipping hub"), -Math.PI / 2);
-    public static final Position lined_up_with_ASU =
-            new Position(new Point(
-                    allianceShippingHub.getX() - 5, allianceStorageUnit.getY(),
-                    "lined up with storage unit"), -Math.PI / 2);
-    public static final Position warehouse_entrance =
-            new Position(new Point(-3, warehouse.getY() - 11, "warehouse entrance"), 0);
-    public static final Position inside_warehouse =
-            new Position(new Point(-6, warehouse.getY(), "inside warehouse", Point.Action.RAISE_SLIDE_L1,
-                    Navigation.STRAFE_CORRECTION_POWER, 0.0), 0);
-
-    public static final ArrayList<Position> PARK_ASU = new ArrayList<>(Arrays.asList(
-            new Position(new Point(10, allianceStorageUnit.getY(), "near storage unit"), 0),
-            allianceStorageUnit
-    ));
-    public static final ArrayList<Position> PRELOAD_BOX = new ArrayList<>(Arrays.asList(
-            allianceShippingHub
-    ));
-    public static final ArrayList<Position> CAROUSEL = new ArrayList<>(Arrays.asList(
-            out_from_carousel,
-            carousel
-    ));
-    public static final ArrayList<Position> PRELOAD_BOX_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-            allianceShippingHub,
-            backed_up_from_ASH,
-            lined_up_with_ASU,
-            allianceStorageUnit
-    ));
-    public static final ArrayList<Position> CAROUSEL_AND_PRELOAD_BOX = new ArrayList<>(Arrays.asList(
-            out_from_carousel,
-            carousel,
-            allianceShippingHub
-    ));
-    public static final ArrayList<Position> PRELOAD_BOX_AND_CAROUSEL = new ArrayList<>(Arrays.asList(
-            allianceShippingHub,
-            out_from_carousel,
-            carousel
-    ));
-    public static final ArrayList<Position> CAROUSEL_PRELOAD_BOX_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-            out_from_carousel,
-            carousel,
-            allianceShippingHub,
-            backed_up_from_ASH,
-            lined_up_with_ASU,
-            allianceStorageUnit
-    ));
-    public static final ArrayList<Position> PRELOAD_BOX_CAROUSEL_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-            allianceShippingHub,
-            out_from_carousel,
-            carousel,
-            allianceStorageUnit
-    ));
-    public static final ArrayList<Position> CAROUSEL_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-            out_from_carousel,
-            carousel,
-            allianceStorageUnit
-    ));
-    public static final ArrayList<Position> PARK_WAREHOUSE = new ArrayList<>(Arrays.asList(
-            new Position(new Point(6, warehouse_entrance.getY() - 11, "out from start wall"), -Math.PI / 2),
-            warehouse_entrance,
-            inside_warehouse,
-            warehouse
-    ));
-    public static final ArrayList<Position> PRELOAD_BOX_AND_PARK_WAREHOUSE = new ArrayList<>(Arrays.asList(
-            allianceShippingHub,
-            new Position(new Point(backed_up_from_ASH.getX(), backed_up_from_ASH.getY(), "backed up from ASH"), 0),
-            warehouse_entrance,
-            inside_warehouse,
-            warehouse
-    ));
-    public static final ArrayList<Position> CAROUSEL_AND_PARK_WAREHOUSE = new ArrayList<>(Arrays.asList(
-            out_from_carousel,
-            carousel,
-            warehouse_entrance,
-            inside_warehouse,
-            warehouse
-    ));
+    public static final ArrayList<Position> DUCK_CAROUSEL_PATH = new ArrayList<>(Arrays.asList());
+    public static final ArrayList<Position> DUCK_WAREHOUSE_PATH = new ArrayList<>(Arrays.asList());
+    public static final ArrayList<Position> NO_DUCK_CAROUSEL_PATH = new ArrayList<>(Arrays.asList());
+    public static final ArrayList<Position> NO_DUCK_WAREHOUSE_PATH = new ArrayList<>(Arrays.asList());
 
     // TESTING PATHS
     // =============
@@ -916,31 +746,31 @@ class AutonomousPaths {
     // NOTE:
     // - These currently only incorporate strafing at intervals of pi/2, moving forward/backward whenever possible.
     // - These assume both orientation and location to be relative to the robot's starting position.
-//    public static final ArrayList<Position> PRELOAD_BOX_ONLY = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(6, 0, "Out from wall"), 0),
-//            new Position(new Point(6, 25, "In line with shipping hub"), 0),
-//            new Position(new Point(13, 25, "Location Shipping hub"), 0),
-//            new Position(new Point(13, 25, "POI shipping hub"), -Math.PI / 2)
-//    ));
-//    public static final ArrayList<Position> PRELOAD_BOX_AND_PARK = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(10, 0, "Out from wall"), 0),
-//            new Position(new Point(10, 10, "In line with shipping hub"), 0),
-//            new Position(new Point(10, 10, "Facing shipping hub"), -Math.PI / 2),
-//            new Position(new Point(20, 10, "POI Shipping hub"), -Math.PI / 2),
-//            new Position(new Point(15, 10, "Backed up from shipping hub"), -Math.PI / 2),
-//            new Position(new Point(15, 10, "Facing storage unit"), Math.PI),
-//            new Position(new Point(15, -20, "Partially in storage unit"), Math.PI),
-//            new Position(new Point(25, -20, "POI storage unit"), Math.PI)
-//    ));
-//    public static final ArrayList<Position> PARK_STORAGE_UNIT = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(0, 10, "Out from wall1"), 0),
-//            new Position(new Point(29, 10, "Out from wall2"), 0),
-//            new Position(new Point(29, 25, "POI storage unit"), 0)
-//    ));
-//    public static final ArrayList<Position> MOVE_STRAIGHT = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(0, 20, "P1"), 0)
-//    ));
-//    public static final ArrayList<Position> ROTATE_180 = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(0, 0, "P1"), Math.PI)
-//    ));
+    public static final ArrayList<Position> PRELOAD_BOX_ONLY = new ArrayList<>(Arrays.asList(
+            new Position(new Point(6, 0, "Out from wall"), 0),
+            new Position(new Point(6, 23, "In line with shipping hub"), 0),
+            new Position(new Point(18, 23, "Location Shipping hub"), 0),
+            new Position(new Point(18, 23, "POI shipping hub"), -Math.PI / 2)
+    ));
+    public static final ArrayList<Position> PRELOAD_BOX_AND_PARK = new ArrayList<>(Arrays.asList(
+            new Position(new Point(10, 0, "Out from wall"), 0),
+            new Position(new Point(10, 10, "In line with shipping hub"), 0),
+            new Position(new Point(10, 10, "Facing shipping hub"), -Math.PI / 2),
+            new Position(new Point(20, 10, "POI Shipping hub"), -Math.PI / 2),
+            new Position(new Point(15, 10, "Backed up from shipping hub"), -Math.PI / 2),
+            new Position(new Point(15, 10, "Facing storage unit"), Math.PI),
+            new Position(new Point(15, -20, "Partially in storage unit"), Math.PI),
+            new Position(new Point(25, -20, "POI Parked"), Math.PI)
+    ));
+    public static final ArrayList<Position> PARK = new ArrayList<>(Arrays.asList(
+            new Position(new Point(0, 10, "Out from wall1"), 0),
+            new Position(new Point(26, 10, "Out from wall2"), 0),
+            new Position(new Point(26, 25, "POI"), 0)
+    ));
+    public static final ArrayList<Position> MOVE_STRAIGHT = new ArrayList<>(Arrays.asList(
+            new Position(new Point(0, 20, "P1"), 0)
+    ));
+    public static final ArrayList<Position> ROTATE_180 = new ArrayList<>(Arrays.asList(
+            new Position(new Point(0, 0, "P1"), Math.PI)
+    ));
 }
