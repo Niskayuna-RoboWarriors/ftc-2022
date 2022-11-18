@@ -24,7 +24,7 @@ public class Navigation
     final double ROTATE_ACCELERATION = 0.1;
     // How many inches per second the robot goes at when moving forward with all motors set to full power.
     // TODO: empirically measure this value.
-    final double SPEED_FACTOR = 1.0;
+    final double SPEED_FACTOR = 1.0; //1 being the fastest speed, 0 being the lowest speed (We think???)
     final double ROTATION_RADIUS = 1.0; // Radius of the robot's rotation (still needs to be calculated)
     final double MAX_STRAFE_POWER = 1.0;
     final double MIN_STRAFE_POWER = 0.2;
