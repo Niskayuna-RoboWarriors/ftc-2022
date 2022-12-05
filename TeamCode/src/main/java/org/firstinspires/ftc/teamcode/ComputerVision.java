@@ -237,6 +237,7 @@ class AutonPipeline extends OpenCvPipeline {
      * @param input The current frame containing the barcode to be scanned
      * @return an integer in the interval [-1, 2], where -1 denotes no result, and 0-2 represent positions (in screen space) of the object of interest
      */
+    /*
     private Robot.BarcodeScanResult processBarcodeFrame(Mat input, Mat output) {
         Mat frame = input.submat(new Rect(0, BarcodeCropLeft, BarcodeCropTop, input.rows() - BarcodeCropLeft));
 
@@ -245,7 +246,7 @@ class AutonPipeline extends OpenCvPipeline {
         Imgproc.GaussianBlur(barcodeHsv, barcodeHsv, new Size(7, 7), 5);
 
         // Do HSV thresholding to identify the barcode tape as well as the shipping element
-        IsolateBarcodeRange(barcodeHsv, barcodeCapRegions, BarcodeCapRange[0], BarcodeCapRange[1]);
+        //IsolateBarcodeRange(barcodeHsv, barcodeCapRegions, BarcodeCapRange[0], BarcodeCapRange[1]);
 
         // HSV thresholding for barcode tape isolation
         IsolateBarcodeRange(barcodeHsv, barcodeTapeRegionsRed1, BarcodeTapeRangeRed1[0], BarcodeTapeRangeRed1[1]);
@@ -337,4 +338,5 @@ class AutonPipeline extends OpenCvPipeline {
     public void onViewportTapped() {
 //        camera.pauseViewport();
     }
+    */
 }
