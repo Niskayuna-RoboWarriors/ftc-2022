@@ -1,4 +1,4 @@
-/* Authors: Nisky Robotics 6460 2021-2022 Programming Team
+/* Authors: Nisky Robotics 6460 2022-2023 Programming Team
  */
 
 package org.firstinspires.ftc.teamcode;
@@ -15,7 +15,7 @@ import java.util.Collections;
 
 /** Autonomous OpMode for Freight Frenzy.
  */
-@TeleOp(name="Freight Frenzy Tele-Op", group="TeleOp OpMode")
+@TeleOp(name="PowerPlay Tele-Op", group="TeleOp OpMode")
 public class PowerPlayTeleOp extends OpMode {
 
     private RobotManager robotManager;
@@ -25,7 +25,7 @@ public class PowerPlayTeleOp extends OpMode {
     public void init() {
         initSharedPreferences();
         robotManager = new RobotManager(hardwareMap, gamepad1, gamepad2, new ArrayList<>(Collections.emptyList()),
-                                        allianceColor, RobotManager.StartingSide.CAROUSEL,
+                                        allianceColor, RobotManager.StartingSide.OUR_COLOR,
                                         Navigation.MovementMode.STRAFE, telemetry, elapsedTime);
         IMUPositioning.Initialize(this);
     }

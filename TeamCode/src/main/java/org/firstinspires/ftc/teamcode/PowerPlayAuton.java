@@ -9,7 +9,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 
 import java.util.ArrayList;
 
-@Autonomous(name="FreightFrenzyAuton", group="Linear OpMode")
+@Autonomous(name="PowerPlayAuton", group="Linear OpMode")
 public class PowerPlayAuton extends LinearOpMode {
 
     private RobotManager robotManager;
@@ -130,11 +130,11 @@ public class PowerPlayAuton extends LinearOpMode {
                 break;
         }
 
-        if (startingSide.equals("CAROUSEL")) {
-            PowerPlayAuton.startingSide = RobotManager.StartingSide.CAROUSEL;
+        if (startingSide.equals("OUR_COLOR")) {
+            PowerPlayAuton.startingSide = RobotManager.StartingSide.OUR_COLOR;
         }
-        else if (startingSide.equals("WAREHOUSE")) {
-            PowerPlayAuton.startingSide = RobotManager.StartingSide.WAREHOUSE;
+        else if (startingSide.equals("THEIR_COLOR")) {
+            PowerPlayAuton.startingSide = RobotManager.StartingSide.THEIR_COLOR;
         }
 
         if (allianceColor.equals("BLUE")) {

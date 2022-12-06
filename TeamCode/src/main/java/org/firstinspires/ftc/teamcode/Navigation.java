@@ -517,7 +517,7 @@ public class Navigation {
      * @return an array containing the scaled versions of a and b
      */
     double[] scaleRange(double a, double b) {
-        double max = Math.abs(a) > Math.abs(b) ? Math.abs(a) : Math.abs(b);
+        double max = Math.max(Math.abs(a), Math.abs(b));
         return new double[] {a / max, b / max};
     }
 
