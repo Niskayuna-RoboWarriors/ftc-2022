@@ -89,7 +89,7 @@ public class CameraSnapshotJavaFX extends Application {
 
         // If camera is opened
         if (capture.isOpened()) {
-            // If there is next video frame
+            // If there is next video frame0
             if (capture.read(matrix)) {
                 // Creating BuffredImage from the matrix
                 BufferedImage image = new BufferedImage(matrix.width(),
