@@ -300,13 +300,13 @@ public class RobotManager {
      */
     public void pickUpCone() {
         // Suck the cone into the horseshoe
-        robot.desiredCompliantWheelsState = Robot.CompliantWheelsState.ON;
+        // robot.desiredCompliantWheelsState = Robot.CompliantWheelsState.ON;
         double startTime = elapsedTime.milliseconds();
-        while (elapsedTime.milliseconds() - startTime < MechanismDriving.COMPLIANT_WHEELS_TIME)
-            mechanismDriving.updateCompliantWheels(robot);
+//        while (elapsedTime.milliseconds() - startTime < MechanismDriving.COMPLIANT_WHEELS_TIME)
+//            mechanismDriving.updateCompliantWheels(robot);
         // Turns off compliant wheels
-        robot.desiredCompliantWheelsState = Robot.CompliantWheelsState.OFF;
-        mechanismDriving.updateCompliantWheels(robot);
+//        robot.desiredCompliantWheelsState = Robot.CompliantWheelsState.OFF;
+//        mechanismDriving.updateCompliantWheels(robot);
     }
 
     /** Returns whether the driver is attempting to move the robot linearly

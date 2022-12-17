@@ -25,11 +25,11 @@ public class Robot {
     public enum SlidesState {RETRACTED, LOW, LOW_LOWERED, MEDIUM, MEDIUM_LOWERED, HIGH, HIGH_LOWERED, UNREADY}
     public enum ParkingPosition {INSIDE, MIDDLE, OUTSIDE}
     public enum HorseshoeState {FRONT, REAR}
-    public enum CompliantWheelsState {OFF, ON}
+    // public enum CompliantWheelsState {OFF, ON}
 
     public static SlidesState desiredSlidesState = SlidesState.UNREADY;
     public HorseshoeState desiredHorseshoeState;
-    public CompliantWheelsState desiredCompliantWheelsState;
+    // public CompliantWheelsState desiredCompliantWheelsState;
 
     enum BarcodeScanState {CHECK_SCAN, SCAN}
 
@@ -58,7 +58,7 @@ public class Robot {
     HashMap<RobotConfig.DriveMotors, DcMotor> driveMotors = new HashMap<RobotConfig.DriveMotors, DcMotor>();
 
     // Hardware
-    public DcMotor slidesLeft, slidesRight, compliantWheels;
+    public DcMotor slidesLeft, slidesRight;
     public Servo horseshoe;
     public Servo horseshoeIndicator;
 
