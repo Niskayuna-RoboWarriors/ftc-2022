@@ -4,10 +4,12 @@
 package org.firstinspires.ftc.teamcode;
 
 
+import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.util.Range;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Objects;
 
 
@@ -18,16 +20,19 @@ public class Navigation {
     public static enum Action {NONE}
     // AUTON CONSTANTS
     // ===============
-    public enum MovementMode {FORWARD_ONLY, STRAFE}
-
-    static final double STRAFE_RAMP_DISTANCE = 3;  // Inches
-    static final double ROTATION_RAMP_DISTANCE = Math.PI / 3;  // Radians
-    static final double MAX_STRAFE_POWER = 0.95;
-    static final double MIN_STRAFE_POWER = 0.5;
-    static final double STRAFE_CORRECTION_POWER = 0.3;
-    static final double MAX_ROTATION_POWER = 0.5;
-    static final double MIN_ROTATION_POWER = 0.4;
-    static final double ROTATION_CORRECTION_POWER = 0.2;
+    final double STRAFE_ACCELERATION = 0.1;  // Inches per second per second
+    final double ROTATE_ACCELERATION = 0.1;
+    // How many inches per second the robot goes at when moving forward with all motors set to full power.
+    // TODO: empirically measure this value.
+    final double SPEED_FACTOR = 1.0; //1 being the fastest speed, 0 being the lowest speed (We think???)
+    final double ROTATION_RADIUS = 1.0; // Radius of the robot's rotation (still needs to be calculated)
+    final double MAX_STRAFE_POWER = 1.0;
+    final double MIN_STRAFE_POWER = 0.2;
+    final double MAX_ROTATE_POWER = 0.5;
+    final double MIN_ROTATE_POWER = 0.1;
+    final boolean ROTATIONAL_RAMPING = false;
+    final double STRAFE_RAMP_DISTANCE = 1.0;
+    final double ROTATION_RAMP_DISTANCE = 1.0;
     // Accepted amounts of deviation between the robot's desired position and actual position.
     static final double EPSILON_LOC = 1.4;
     static final double EPSILON_ANGLE = 0.19;
@@ -88,28 +93,30 @@ public class Navigation {
             robot.telemetry.update();
             switch (movementMode) {
                 case FORWARD_ONLY:
-                    rotate(getAngleBetween(robot.getPosition().x, robot.getPosition().y, target.x, target.y) - Math.PI / 2,
-                            target.rotatePower, robot);
-                    travelLinear(target, target.getStrafePower(), robot);
-                    rotate(target.getRotation(), target.getRotatePower(), robot);
+                    rotate(getAngleBetween(robot.getPosition().getLocation(), target.getLocation()) - Math.PI / 2,
+                            target.getLocation().rotatePower, robot);
+                    travelLinear(target.getLocation(), target.getLocation().strafePower, robot);
+                    rotate(target.getRotation(), target.getLocation().rotatePower, robot);
                     break;
                 case STRAFE:
-                    travelLinear(target, target.strafePower, robot);
-                    rotate(target.getRotation(), target.rotatePower, robot);
+                    travelLinear(target.getLocation(), target.getLocation().strafePower, robot);
+                    rotate(target.getRotation(), target.getLocation().rotatePower, robot);
                     break;
             }
 
             pathIndex++;
 
-            robot.telemetry.addData("Got to", target.name);
+            robot.telemetry.addData("Got to", target.getLocation().name);
             robot.telemetry.update();
 
-            if (target.name.startsWith("POI")) break;
+            if (target.getLocation().name.length() >= 3 && target.getLocation().name.substring(0, 3).equals("POI")) break;
         }
         return path.get(pathIndex - 1);
     }
 
     /** Updates the strafe power according to movement mode and gamepad 1 left trigger.
+     *
+     *  @return Whether the strafe power is greater than zero.
      */
     public void updateStrafePower(boolean hasMovementDirection, GamepadWrapper gamepads, Robot robot) {
         if (!hasMovementDirection) {
@@ -207,58 +214,50 @@ public class Navigation {
 
         double moveDirection = Math.atan2(analogValues.gamepad1LeftStickY, analogValues.gamepad1RightStickX);
         setDriveMotorPowers(moveDirection, strafePower, turn, robot, false);
+        robot.telemetry.addData("Left Stick Position",Math.toDegrees(moveDirection) + " degrees");
     }
 
     /** Rotates the robot a number of degrees.
      *
      * @param target The orientation the robot should assume once this method exits.
      *               Within the interval (-pi, pi].
-     * @param constantPower A hard-coded power value for the method to use instead of ramping. Ignored if set to zero.
+     * @param ramping Whether to use ramping.
      */
-    public void rotate(double target, double constantPower, Robot robot) {
+    public void rotate(double target, boolean ramping, Robot robot)
+    {
         robot.positionManager.updatePosition(robot);
         // Both values are restricted to interval (-pi, pi].
         final double startOrientation = robot.getPosition().getRotation();
         double currentOrientation = startOrientation;  // Copies by value because double is primitive.
+        double startingTime = robot.elapsedTime.milliseconds();
 
         double rotationSize = getRotationSize(startOrientation, target);
+        double halfRotateTime = getHalfRotateTime(rotationSize);
 
-        double power;
-        boolean ramping = true;
-        if (Math.abs(constantPower - 0) > FLOAT_EPSILON) {
-            power = constantPower;
-            ramping = false;
-        }
-        else {
-            power = MIN_ROTATION_POWER;
-        }
-        double rotationRemaining = getRotationSize(currentOrientation, target);
+        double power = MIN_ROTATE_POWER;  // If ramping is false, power will stay at this value.
         double rotationProgress = getRotationSize(startOrientation, currentOrientation);
-        boolean finishedRotation = false;
-        int numFramesSinceLastFailure = 0;
-        boolean checkFrames = false;
+        double rotationRemaining = getRotationSize(currentOrientation, target);
+        double timeElapsed = 0;
+        double timeLeft = 2 * halfRotateTime - timeElapsed;
 
-        while (!finishedRotation) {
+        while (timeElapsed < 2 * halfRotateTime) {
             robot.telemetry.addData("rot left", rotationRemaining);
             robot.telemetry.addData("current orientation", currentOrientation);
             robot.telemetry.addData("target", target);
             robot.telemetry.update();
 
             if (ramping) {
-                if (rotationProgress < rotationSize / 2) {
+                if (timeElapsed < halfRotateTime) {
                     // Ramping up.
-                    if (rotationProgress <= ROTATION_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (rotationProgress / ROTATION_RAMP_DISTANCE) * MAX_ROTATION_POWER,
-                                MIN_ROTATION_POWER, MAX_ROTATION_POWER);
-                    }
-                } else {
+                    power = Range.clip(
+                            (timeElapsed / halfRotateTime) * MAX_ROTATE_POWER,
+                            MIN_ROTATE_POWER, MAX_ROTATE_POWER);
+                }
+                else {
                     // Ramping down.
-                    if (rotationRemaining <= ROTATION_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (rotationRemaining / ROTATION_RAMP_DISTANCE) * MAX_ROTATION_POWER,
-                                MIN_ROTATION_POWER, MAX_ROTATION_POWER);
-                    }
+                    power = Range.clip(
+                            (timeLeft / halfRotateTime) * MAX_ROTATE_POWER,
+                            MIN_ROTATE_POWER, MAX_ROTATE_POWER);
                 }
             }
 
@@ -278,18 +277,10 @@ public class Navigation {
             robot.positionManager.updatePosition(robot);
             currentOrientation = robot.getPosition().getRotation();
 
-            rotationRemaining = getRotationSize(currentOrientation, target);
             rotationProgress = getRotationSize(startOrientation, currentOrientation);
-
-            if (rotationRemaining > EPSILON_ANGLE) {
-                numFramesSinceLastFailure = 0;
-            } else {
-                checkFrames = true;
-                numFramesSinceLastFailure++;
-                if (numFramesSinceLastFailure >= NUM_CHECK_FRAMES) {
-                    finishedRotation = true;
-                }
-            }
+            rotationRemaining = getRotationSize(currentOrientation, target);
+            timeElapsed = robot.elapsedTime.milliseconds()-startingTime;
+            timeLeft = 2 * halfRotateTime - timeElapsed;
         }
 
         stopMovement(robot);
@@ -322,52 +313,31 @@ public class Navigation {
      */
     public void travelLinear(Position target, double constantPower, Robot robot) {
         robot.positionManager.updatePosition(robot);
-        final double startX = robot.getPosition().getX();
-        final double startY = robot.getPosition().getY();
+        final Point startLoc = robot.getPosition().getLocation();
+        Point currentLoc;
 
-        double totalDistance = getEuclideanDistance(startX, startY, target.x, target.y);
+        double totalDistance = getEuclideanDistance(startLoc, target);
+        double halfStrafeTime = getHalfStrafeTime(totalDistance, getAngleBetween(startLoc, target));
 
-        double power;
-        boolean ramping = true;
+        double power = MIN_STRAFE_POWER;
+        double distanceTraveled = getEuclideanDistance(startLoc, currentLoc);
+        double distanceRemaining = getEuclideanDistance(currentLoc, target);
+        double timeElapsed = 0;
+        double timeLeft = 2 * halfStrafeTime - timeElapsed;
 
-        if (Math.abs(constantPower - 0.0) > FLOAT_EPSILON) {
-            power = constantPower;
-            ramping = false;
-        }
-        else {
-            power = MIN_STRAFE_POWER;
-        }
-        double distanceToTarget;
-        double distanceTraveled;
-        boolean finishedTravel = false;
-        double numFramesSinceLastFailure = 0;
-        boolean checkFrames = false;
+        while (timeElapsed < 2 * halfStrafeTime) {
 
-        while (!finishedTravel) {
-
-            robot.positionManager.updatePosition(robot);
-            double currentX = robot.getPosition().getX();
-            double currentY = robot.getPosition().getY();
-
-            distanceToTarget = getEuclideanDistance(currentX, currentY, target.x, target.y);
-            distanceTraveled = getEuclideanDistance(startX, startY, currentX, currentY);
-
-            if (ramping) {
-                if (distanceTraveled < totalDistance / 2) {
-                    // Ramping up.
-                    if (distanceTraveled <= STRAFE_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (distanceTraveled / STRAFE_RAMP_DISTANCE) * MAX_STRAFE_POWER,
-                                MIN_STRAFE_POWER, MAX_STRAFE_POWER);
-                    }
-                } else {
-                    // Ramping down.
-                    if (distanceToTarget <= STRAFE_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (distanceToTarget / STRAFE_RAMP_DISTANCE) * MAX_STRAFE_POWER,
-                                MIN_STRAFE_POWER, MAX_STRAFE_POWER);
-                    }
-                }
+            if (timeElapsed < halfStrafeTime) {
+                // Ramping up.
+                power = Range.clip(
+                        (timeElapsed / halfStrafeTime) * MAX_STRAFE_POWER,
+                        MIN_STRAFE_POWER, MAX_STRAFE_POWER);
+            }
+            else {
+                // Ramping down.
+                power = Range.clip(
+                        (timeLeft / halfStrafeTime) * MAX_STRAFE_POWER,
+                        MIN_STRAFE_POWER, MAX_STRAFE_POWER);
             }
 
             if (checkFrames) {
@@ -378,42 +348,84 @@ public class Navigation {
 
             setDriveMotorPowers(strafeAngle, power, 0.0, robot, false);
 
-//            robot.telemetry.addData("X", startLoc.x);
-//            robot.telemetry.addData("Y", startLoc.y);
-//            robot.telemetry.addData("X", currentLoc.x);
-//            robot.telemetry.addData("Y", currentLoc.y);
+            setDriveMotorPowers(getAngleBetween(currentLoc, target), power, 0.0, robot, false);
 
+            robot.positionManager.updatePosition(robot);
+            currentLoc = robot.getPosition().getLocation();
 
-//
-//            robot.telemetry.addData("tX", target.x);
-//            robot.telemetry.addData("tY", target.y);
-//            robot.telemetry.addData("Strafe angle", getAngleBetween(currentLoc, target));
-//            robot.telemetry.update();
+            distanceTraveled = getEuclideanDistance(startLoc, currentLoc);
+            distanceRemaining = getEuclideanDistance(currentLoc, target);
+            timeElapsed = robot.elapsedTime.milliseconds()-startingTime;
+            timeLeft = 2 * halfStrafeTime - timeElapsed;
 
-            if (distanceToTarget > EPSILON_LOC) {
-                numFramesSinceLastFailure = 0;
-            }
-            else {
-                checkFrames = true;
-                numFramesSinceLastFailure++;
-                if (numFramesSinceLastFailure >= NUM_CHECK_FRAMES) {
-                    finishedTravel = true;
-                }
-            }
+            robot.telemetry.addData("X", currentLoc.x);
+            robot.telemetry.addData("Y", currentLoc.y);
+            robot.telemetry.addData("dX", target.x);
+            robot.telemetry.addData("dY", target.y);
+            robot.telemetry.update();
         }
-
         stopMovement(robot);
     }
 
-    /** Calculates the angle at which the robot must strafe in order to get to a target location.
+    /** Calculates the speed of the robot when strafing given the direction of strafing and the strafing speed
+     *
+     *  @param strafeAngle the direction (angle) in which the robot should strafe
+     *  @param power the strafing speed of the robot
+     *  @return the speed of the robot
      */
-    private double getStrafeAngle(Position currentLoc, Position target) {
-        double strafeAngle = currentLoc.getRotation() - getAngleBetween(currentLoc.getX(), currentLoc.getY(), target.getX(), target.getY());
-        if (strafeAngle > Math.PI) {
-            strafeAngle -= 2 * Math.PI;
+    private double getRobotSpeed(double strafeAngle, double power) {
+        double powerSet1 = Math.sin(strafeAngle) + Math.cos(strafeAngle);
+        double powerSet2 = Math.sin(strafeAngle) - Math.cos(strafeAngle);
+        double[] rawPowers = scaleRange(powerSet1, powerSet2);
+
+        if (strafeAngle > -Math.PI/2 && strafeAngle < Math.PI/2) {
+            return (SPEED_FACTOR * power * Math.sqrt(2 * Math.pow(rawPowers[1]/rawPowers[0], 2) + 2)) / 2;
         }
-        else if (strafeAngle < -Math.PI) {
-            strafeAngle += 2 * Math.PI;
+        else {
+            return (SPEED_FACTOR * power * Math.sqrt(2 * Math.pow(rawPowers[0]/rawPowers[1], 2) + 2)) / 2;
+        }
+    }
+
+    /** Calculates half the amount of time it is estimated for a linear strafe to take.
+     *
+     *  @param distance the distance of the strafe
+     *  @param strafeAngle the angle of the strafe
+     */
+    private double getHalfStrafeTime(double distance, double strafeAngle) {
+        // Inches per second is probably a good unit.
+        double min_strafe_speed = getRobotSpeed(strafeAngle, MIN_STRAFE_POWER);
+        double max_strafe_speed = getRobotSpeed(strafeAngle, MAX_STRAFE_POWER);
+
+        double ramp_distance = (max_strafe_speed + min_strafe_speed) / 2
+                             * (max_strafe_speed - min_strafe_speed) / STRAFE_ACCELERATION;
+        if (distance / 2 >= ramp_distance) {
+            return (distance / 2 - ramp_distance) / max_strafe_speed
+                 + (max_strafe_speed - min_strafe_speed) / STRAFE_ACCELERATION;
+        }
+        else {  // We never get to max_strafe_speed
+            return (-min_strafe_speed + Math.sqrt(Math.pow(min_strafe_speed, 2) + distance * STRAFE_ACCELERATION))
+                 / 0.5 * STRAFE_ACCELERATION;
+        }
+    }
+
+    /** Calculates half the amount of time it is estimated for a rotation to take.
+     *
+     *  @param angle The angle of the rotation
+     */
+    private double getHalfRotateTime(double angle) {
+        // Get this in inches per second but convert to radians per second
+        double min_rotate_speed = (SPEED_FACTOR * MIN_ROTATE_POWER) / ROTATION_RADIUS;
+        double max_rotate_speed = (SPEED_FACTOR * MAX_ROTATE_POWER) / ROTATION_RADIUS;
+
+        double ramp_angle = (max_rotate_speed + min_rotate_speed) / 2
+                * (max_rotate_speed - min_rotate_speed) / ROTATE_ACCELERATION;
+        if (distance / 2 >= ramp_angle) {
+            return (distance / 2 - ramp_angle) / max_rotate_speed
+                    + (max_rotate_speed - min_rotate_speed) / ROTATE_ACCELERATION;
+        }
+        else {  // We never get to max_rotate_speed
+            return (-min_rotate_speed + Math.sqrt(Math.pow(min_rotate_speed, 2) + angle * ROTATE_ACCELERATION))
+                    / 0.5 * ROTATE_ACCELERATION;
         }
         return strafeAngle;
     }
@@ -457,8 +469,10 @@ public class Navigation {
      *               you only want the robot to rotate.
      *  @param turn the speed at which the robot should rotate (clockwise). Must be in the interval [-1, 1]. Set this to
      *              zero if you only want the robot to strafe.
+     *  TODO: take empirical measurements required for this
+     *  @return the speed (inches/second) that the robot will be moving at after the motor powers are set by this method.
      */
-    private void setDriveMotorPowers(double strafeDirection, double power, double turn, Robot robot, boolean debug) {
+    private double setDriveMotorPowers(double strafeDirection, double power, double turn, Robot robot, boolean debug) {
         for (RobotConfig.DriveMotors motor : RobotConfig.DriveMotors.values()) {
             Objects.requireNonNull(robot.driveMotors.get(motor)).setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         }
@@ -489,6 +503,7 @@ public class Navigation {
         robot.driveMotors.get(RobotConfig.DriveMotors.REAR_RIGHT).setPower((rawPowers[0] * power + turn) * wheel_speeds[1]);
         robot.driveMotors.get(RobotConfig.DriveMotors.FRONT_LEFT).setPower((rawPowers[0] * power - turn) * wheel_speeds[2]);
         robot.driveMotors.get(RobotConfig.DriveMotors.FRONT_RIGHT).setPower((rawPowers[1] * power + turn) * wheel_speeds[3]);
+        return 0.0;
     }
 
     /** Sets all drivetrain motor powers to zero.
@@ -919,4 +934,3 @@ class AutonomousPaths {
 //            new Position(new Point(0, 0, "P1"), Math.PI)
 //    ));
 }
-*/
