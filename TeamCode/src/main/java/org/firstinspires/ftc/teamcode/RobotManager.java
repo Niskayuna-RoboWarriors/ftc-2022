@@ -192,7 +192,7 @@ public class RobotManager {
 
     /** Determines the position of the capstone on the barcode.
      */
-    public Robot.ParkingPosition readBarcode() {
+    public String readSignal() { //THIS IS TEMPORARY!
         // Reset the barcode scanning counters and states
 //        robot.barcodeScanResult = Robot.BarcodeScanResult.WRONG_CAPS;
 //        robot.resetBarcodeScanMap();
@@ -202,7 +202,7 @@ public class RobotManager {
         // TODO: call CV function
 
         // Wait for CV to determine a finalized barcodeScanResult value (this is blocking!)
-        while (robot.barcodeScanState == Robot.BarcodeScanState.SCAN) {
+        while (robot.signalScanState == Robot.SignalScanState.SCAN) {
             try {
                 TimeUnit.MICROSECONDS.sleep(10);
             }
@@ -211,11 +211,13 @@ public class RobotManager {
 
         boolean flipped = (allianceColor == AllianceColor.RED && startingSide == StartingSide.OUR_COLOR) || (allianceColor == AllianceColor.BLUE && startingSide == StartingSide.THEIR_COLOR);
 
-        switch (robot.barcodeScanResult) {
-            case LEFT: return flipped ? Robot.ParkingPosition.OUTSIDE : Robot.ParkingPosition.INSIDE;
-            case RIGHT: return flipped ? Robot.ParkingPosition.INSIDE : Robot.ParkingPosition.OUTSIDE;
-            default: return Robot.ParkingPosition.MIDDLE;
+        switch (robot.signalScanResult) {
+            case SIGNAL1: return "Parking position 1";
+            case SIGNAL2: return "Parking position 2";
+            case SIGNAL3: return "Parking position 3";
         }
+
+        return "these string returns are placeholders";
     }
 
     // Each of these methods manually sets the robot state so that a specific task is started, and forces these tasks to

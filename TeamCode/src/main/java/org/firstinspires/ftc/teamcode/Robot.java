@@ -31,23 +31,23 @@ public class Robot {
     public HorseshoeState desiredHorseshoeState;
     public CompliantWheelsState desiredCompliantWheelsState;
 
-    enum BarcodeScanState {CHECK_SCAN, SCAN}
+    enum SignalScanState {CHECK_SCAN, SCAN}
 
-    public BarcodeScanState barcodeScanState;
-    public enum BarcodeScanResult {LEFT, CENTER, RIGHT};
+    public SignalScanState signalScanState;
+    public enum SignalScanResult {SIGNAL1, SIGNAL2, SIGNAL3};
 
-    static final int MAX_BARCODE_ATTEMPTS = 40;                           // How many times to try scanning the barcode before giving up
-    static final int MIN_BARCODE_REPEAT = MAX_BARCODE_ATTEMPTS / 2 + 1;
+    static final int MAX_SIGNAL_ATTEMPTS = 40;                           // How many times to try scanning the barcode before giving up
+    static final int MIN_SIGNAL_REPEAT = MAX_SIGNAL_ATTEMPTS / 2 + 1;
 
-    int numBarcodeAttempts;                                               // Amount of current attempts to scan the barcode
-    Map<BarcodeScanResult, Integer> barcodeScanResultMap;                 // An array representing a histogram of the scan results.
-    BarcodeScanResult barcodeScanResult;                                  // Represents the final decided barcode state
+    int numSignalAttempts;                                               // Amount of current attempts to scan the barcode
+    Map<SignalScanResult, Integer> signalScanResultMap;                 // An array representing a histogram of the scan results.
+    SignalScanResult signalScanResult;                                  // Represents the final decided barcode state
 
     public void resetBarcodeScanMap() {
-        barcodeScanResultMap = new HashMap<BarcodeScanResult, Integer>() {{
-            put(BarcodeScanResult.LEFT, 0);
-            put(BarcodeScanResult.CENTER, 0);
-            put(BarcodeScanResult.RIGHT, 0);
+        signalScanResultMap = new HashMap<SignalScanResult, Integer>() {{
+            put(SignalScanResult.SIGNAL1, 0);
+            put(SignalScanResult.SIGNAL2, 0);
+            put(SignalScanResult.SIGNAL3, 0);
         }};
     }
 
@@ -74,7 +74,7 @@ public class Robot {
         this.elapsedTime = elapsedTime;
         positionManager = new PositionManager(hardwareMap, telemetry);
 
-        numBarcodeAttempts = 0;
+        numSignalAttempts = 0;
         resetBarcodeScanMap();
 
         desiredHorseshoeState = HorseshoeState.FRONT;
