@@ -175,10 +175,10 @@ class AutonPipeline extends OpenCvPipeline {
     final static int SIGNAL_CROP_RIGHT = 30;
 
     // Define HSV scalars that represent ranges of color to be selected from the barcode image
-    //TODO: change these colors to match with actual signal colors!!!
-    final static Scalar[] SIGNAL_RANGE_RED      = {new Scalar(23, 60, 50), new Scalar(78, 255, 255)};
-    final static Scalar[] SIGNAL_RANGE_GREEN = {new Scalar(100, 100, 50), new Scalar(120, 255, 255)};
-    final static Scalar[] SIGNAL_RANGE_BLUE = {new Scalar(170, 100, 50), new Scalar(180, 255, 255)};
+    //TODO: these colors might be too specific to my lighting conditions and camera
+    final static Scalar[] SIGNAL_RANGE_RED = {new Scalar(3, 68, 26), new Scalar(12, 255, 255)};
+    final static Scalar[] SIGNAL_RANGE_GREEN = {new Scalar(49, 53, 26), new Scalar(80, 190, 255)};
+    final static Scalar[] SIGNAL_RANGE_BLUE = {new Scalar(20, 0, 17), new Scalar(80, 255, 55)};
 
     static final Size NOISE_SIZE = new Size(5, 5);
 
