@@ -1,4 +1,4 @@
-/* Authors: Nisky Robotics 6460 2021-2022 Programming Team
+/* Authors: Nisky Robotics 6460 2022-2023 Programming Team
  */
 
 package org.firstinspires.ftc.teamcode;
@@ -6,6 +6,7 @@ package org.firstinspires.ftc.teamcode;
 import android.content.SharedPreferences;
 import android.preference.PreferenceManager;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -13,43 +14,45 @@ import java.util.ArrayList;
 import java.util.Collections;
 
 
-/** Autonomous OpMode for Freight Frenzy.
+/** Autonomous OpMode for PowerPlay.
  */
 @TeleOp(name="Power Play Tele-Op", group="TeleOp OpMode")
-public class PowerPlayTeleOp extends OpMode {
+public class PowerPlayTeleOp extends LinearOpMode {
 
     private RobotManager robotManager;
     private ElapsedTime elapsedTime = new ElapsedTime();
 
     @Override
-    public void init() {
+    public void runOpMode() throws InterruptedException {
+        telemetry.addData("Status", "Initialized");
+        telemetry.update();
+
+        // Init
         initSharedPreferences();
         PowerPlayTeleOp.allianceColor = RobotManager.AllianceColor.BLUE;
         robotManager = new RobotManager(hardwareMap, gamepad1, gamepad2, new ArrayList<>(Collections.emptyList()),
                 allianceColor, RobotManager.StartingSide.OUR_COLOR,
                 Navigation.MovementMode.STRAFE, telemetry, elapsedTime);
         IMUPositioning.Initialize(this);
+
+        // Wait for the game to start (driver presses PLAY)
+        waitForStart();
+        elapsedTime.reset();
+
+        // Loop (run until driver presses STOP)
+        while (opModeIsActive()) {
+            robotManager.readControllerInputs();
+            robotManager.driveMechanisms();
+            robotManager.maneuver();
+            robotManager.robot.positionManager.updatePosition(robotManager.robot);
+
+            telemetry.addData("Pos X", robotManager.robot.positionManager.position.getX());
+            telemetry.addData("Pos Y", robotManager.robot.positionManager.position.getY());
+            telemetry.addData("Pos R", robotManager.robot.positionManager.position.getRotation());
+            telemetry.addData("Status", "Run Time: " + elapsedTime.toString());
+            telemetry.update();
+        }
     }
-
-    @Override
-    public void start() {}
-
-    @Override
-    public void loop() {
-        robotManager.readControllerInputs();
-        robotManager.driveMechanisms();
-        robotManager.maneuver();
-        robotManager.robot.positionManager.updatePosition(robotManager.robot);
-
-//        telemetry.addData("LED Power", robotManager.robot.clawLEDs.getPower());
-        telemetry.addData("Pos X", robotManager.robot.positionManager.position.getX());
-        telemetry.addData("Pos Y", robotManager.robot.positionManager.position.getY());
-        telemetry.addData("Pos R", robotManager.robot.positionManager.position.getRotation());
-        telemetry.update();
-    }
-
-    @Override
-    public void stop() {}
 
     // ANDROID SHARED PREFERENCES
     // ==========================
