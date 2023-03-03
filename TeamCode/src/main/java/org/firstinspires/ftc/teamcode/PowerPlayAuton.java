@@ -27,7 +27,7 @@ public class PowerPlayAuton extends LinearOpMode {
     AprilTagDetectionPipeline aprilTagDetectionPipeline;
 
     static final double FEET_PER_METER = 3.28084;
-    public static final long TILE_TIME = 300;
+    public static final long TILE_TIME = 600;
     public static final long ROTATION_TIME = 1500;
 
     // Lens intrinsics
@@ -183,25 +183,28 @@ public class PowerPlayAuton extends LinearOpMode {
 
         if (startingSide == RobotManager.StartingSide.LEFT) {
             // Placing the preloaded cone on the high junction closest to the cone stack
-            move(Math.PI / 2, 2*TILE_TIME);
-            move(0, (long) (0.5*TILE_TIME));
-            move(Math.PI / 2, 100);
-            robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
-            move(-Math.PI / 2, 100);
+            move(Math.PI / 2, (long) (2.5*TILE_TIME));
+//             move(0, (long) (0.5*TILE_TIME));
+//             move(Math.PI / 2, 100);
+            robotManager.deliverConeHigh(Robot.ClawRotatorState.SIDE);
+//             move(-Math.PI / 2, 100);
 
             // Picking up a cone from the stack
+            move(-Math.PI / 2, (long) (0.5*TILE_TIME));
             robotManager.pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
-            turn(1, 300);
-            move(Math.PI/2, (long) (1.5*TILE_TIME));
+            turn(-1, ROTATION_TIME);
+            move(-Math.PI/2, (long) (1.5*TILE_TIME));
             robotManager.closeClaw();
             robotManager.moveSlides(robotManager, Robot.SlidesState.LOW);
 
             // Placing the cone from the stack on the high junction closest to the cone stack
-            move(-Math.PI / 2, (long) (1.5*TILE_TIME));
-            turn(-1, 300);
+            move(Math.PI / 2, (long) (1.5*TILE_TIME));
+            turn(1, ROTATION_TIME);
             move(Math.PI / 2, 100);
-            robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+            robotManager.deliverConeHigh(Robot.ClawRotatorState.REAR);
             move(-Math.PI / 2, 100);
+
+            robotManager.retractSlides();
 
             if (tagOfInterest == null || tagOfInterest.id == left) {
                 System.out.println("Left");
@@ -222,25 +225,28 @@ public class PowerPlayAuton extends LinearOpMode {
         }
         else if (startingSide == RobotManager.StartingSide.RIGHT) {
              // Placing the preloaded cone on the high junction closest to the cone stack
-             move(Math.PI / 2, 2*TILE_TIME);
-             move(Math.PI, (long) (0.5*TILE_TIME));
-             move(Math.PI / 2, 100);
-             robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
-             move(-Math.PI / 2, 100);
+             move(Math.PI / 2, (long) (2.5*TILE_TIME));
+//              move(Math.PI, (long) (0.5*TILE_TIME));
+//              move(Math.PI / 2, 100);
+             robotManager.deliverConeHigh(Robot.ClawRotatorState.SIDE);
+//              move(-Math.PI / 2, 100);
 
              // Picking up a cone from the stack
+             move(-Math.PI / 2, (long) (0.5*TILE_TIME));
              robotManager.pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
-             turn(-1, 300);
-             move(Math.PI/2, (long) (1.5*TILE_TIME));
+             turn(1, ROTATION_TIME);
+             move(-Math.PI/2, (long) (1.5*TILE_TIME));
              robotManager.closeClaw();
              robotManager.moveSlides(robotManager, Robot.SlidesState.LOW);
 
              // Placing the cone from the stack on the high junction closest to the cone stack
-             move(-Math.PI / 2, (long) (1.5*TILE_TIME));
-             turn(1, 300);
+             move(Math.PI / 2, (long) (1.5*TILE_TIME));
+             turn(-1, ROTATION_TIME);
              move(Math.PI / 2, 100);
-             robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+             robotManager.deliverConeHigh(Robot.ClawRotatorState.REAR);
              move(-Math.PI / 2, 100);
+
+             robotManager.retractSlides();
 
              if (tagOfInterest == null || tagOfInterest.id == left) {
                  System.out.println("Left");
