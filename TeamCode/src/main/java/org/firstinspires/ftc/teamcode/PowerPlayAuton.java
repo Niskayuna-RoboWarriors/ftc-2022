@@ -177,52 +177,84 @@ public class PowerPlayAuton extends LinearOpMode {
             telemetry.update();
         }
 
-        // Placing the first cone
-        move(-Math.PI/2, 1500);
-        move(Math.PI, 375);
-        move(-Math.PI/2, 100);
-        robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
-        move(Math.PI/2, 100);
-        robotManager.pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
-        turn(1, 300);
-        move(0, 1000);
-        robotManager.closeClaw();
-        move(Math.PI/2, 1000);
-        turn(-1, 300);
-        move(-Math.PI/2, 100);
-        robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
-        move(Math.PI/2, 100);
-
-//        boolean moving = true;
-        if(tagOfInterest == null || tagOfInterest.id == left)
-        {
-            System.out.println("Left");
-            move(0, 375);
-            move(Math.PI/2, 750);
-            move(0, 750);
-
-        }
-        else if(tagOfInterest.id == middle) {
-            System.out.println("middle");
-            move(0, 375);
-            move(Math.PI/2, 750);
-//            moving = false;
-        }
-        else if(tagOfInterest.id == right) {
-            System.out.println("right");
+        if (startingSide == RobotManager.StartingSide.LEFT) {
+            // Placing the preloaded cone on the high junction closest to the cone stack
+            move(-Math.PI / 2, 1500);
             move(Math.PI, 375);
-            move(Math.PI/2, 750);
+            move(-Math.PI / 2, 100);
+            robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+            move(Math.PI / 2, 100);
+
+            // Picking up a cone from the stack
+            robotManager.pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
+            turn(1, 300);
+            move(0, 1000);
+            robotManager.closeClaw();
+            robotManager.moveSlides(robotManager, Robot.SlidesState.LOW);
+
+            // Placing the cone from the stack on the high junction closest to the cone stack
+            move(Math.PI / 2, 1000);
+            turn(-1, 300);
+            move(-Math.PI / 2, 100);
+            robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+            move(Math.PI / 2, 100);
+
+            if (tagOfInterest == null || tagOfInterest.id == left) {
+                System.out.println("Left");
+                move(0, 375);
+                move(Math.PI/2, 750);
+                move(0, 750);
+            }
+            else if (tagOfInterest.id == middle) {
+                System.out.println("middle");
+                move(0, 375);
+                move(Math.PI/2, 750);
+            }
+            else if (tagOfInterest.id == right) {
+                System.out.println("right");
+                move(Math.PI, 375);
+                move(Math.PI/2, 750);
+            }
         }
+        else if (startingSide == RobotManager.StartingSide.RIGHT) {
+            // Placing the preloaded cone on the high junction closest to the cone stack
+            move(-Math.PI / 2, 1500);
+            move(0, 375);
+            move(-Math.PI / 2, 100);
+            robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+            move(Math.PI / 2, 100);
 
-//        if (moving) {
-//            waitMilliseconds(675);
-//            robotManager.navigation.stopMovement(robotManager.robot);
-//        }
+            // Picking up a cone from the stack
+            robotManager.pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
+            turn(-1, 300);
+            move(Math.PI/2, 1000);
+            robotManager.closeClaw();
+            robotManager.moveSlides(robotManager, Robot.SlidesState.LOW);
 
-//        // Move forward
-//        robotManager.navigation.setDriveMotorPowers(-Math.PI / 2, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
-//        waitMilliseconds(750);
-//        robotManager.navigation.stopMovement(robotManager.robot);
+            // Placing the cone from the stack on the high junction closest to the cone stack
+            move(0, 1000);
+            turn(1, 300);
+            move(-Math.PI / 2, 100);
+            robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+            move(Math.PI / 2, 100);
+
+            if (tagOfInterest == null || tagOfInterest.id == left) {
+                System.out.println("Left");
+                move(0, 375);
+                move(Math.PI/2, 750);
+            }
+            else if (tagOfInterest.id == middle) {
+                System.out.println("middle");
+                move(Math.PI, 375);
+                move(Math.PI/2, 750);
+            }
+            else if (tagOfInterest.id == right) {
+                System.out.println("right");
+                move(Math.PI, 375);
+                move(Math.PI/2, 750);
+                move(Math.PI, 750);
+            }
+        }
 
         while (opModeIsActive()) {}
     }
