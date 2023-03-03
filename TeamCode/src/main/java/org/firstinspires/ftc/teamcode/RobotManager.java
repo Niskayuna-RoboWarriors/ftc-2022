@@ -336,6 +336,8 @@ public class RobotManager {
         double startTime = robot.elapsedTime.time();
         while (robot.elapsedTime.time()-startTime < 1000) {}
         openClaw();
+        robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
+        mechanismDriving.updateClawRotator(robot);
     }
 
     public void pickUpStackCone(Robot.SlidesState coneNumber) {
