@@ -7,6 +7,14 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.teamcode.AprilTagDetectionPipeline;
+import org.openftc.apriltag.AprilTagDetection;
+import org.openftc.easyopencv.OpenCvCamera;
+import org.openftc.easyopencv.OpenCvCameraFactory;
+import org.openftc.easyopencv.OpenCvCameraRotation;
+import org.openftc.easyopencv.OpenCvInternalCamera;
+
 import java.util.ArrayList;
 import java.util.Random;
 
@@ -15,43 +23,218 @@ public class PowerPlayAuton extends LinearOpMode {
 
     private RobotManager robotManager;
     private ElapsedTime elapsedTime = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
+    OpenCvCamera camera;
+    AprilTagDetectionPipeline aprilTagDetectionPipeline;
+
+    static final double FEET_PER_METER = 3.28084;
+
+    // Lens intrinsics
+    // UNITS ARE PIXELS
+    // NOTE: this calibration is for the C920 webcam at 800x448.
+    // You will need to do your own calibration for other configurations!
+    double fx = 578.272;
+    double fy = 578.272;
+    double cx = 402.145;
+    double cy = 221.506;
+
+    // UNITS ARE METERS
+    double tagsize = 0.166;
+
+    //insert ID of sleeve
+    int left = 1;
+    int middle = 2;
+    int right = 3;
+
+    int ID_TAG_OF_INTEREST = 18; // Tag ID 18 from the 36h11 family
+
+    AprilTagDetection tagOfInterest = null;
+
+    public void move(double direction, long time) {
+        robotManager.navigation.setDriveMotorPowers(direction, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
+        waitMilliseconds(time);
+        robotManager.navigation.stopMovement(robotManager.robot);
+    }
+
+    public void turn(double direction, long time) {
+        robotManager.navigation.setDriveMotorPowers(0, 0, direction * Navigation.MAX_ROTATION_POWER, robotManager.robot, false);
+        waitMilliseconds(time);
+        robotManager.navigation.stopMovement(robotManager.robot);
+    }
 
     @Override
     public void runOpMode() {
+        int cameraMonitorViewId = hardwareMap.appContext.getResources().getIdentifier("cameraMonitorViewId", "id", hardwareMap.appContext.getPackageName());
+//        camera = OpenCvCameraFactory.getInstance().createWebcam(hardwareMap.get(WebcamName.class, "Webcam 1"), cameraMonitorViewId);
+        camera = OpenCvCameraFactory.getInstance().createInternalCamera(OpenCvInternalCamera.CameraDirection.BACK, cameraMonitorViewId);
+        aprilTagDetectionPipeline = new AprilTagDetectionPipeline(tagsize, fx, fy, cx, cy);
+
+        camera.setPipeline(aprilTagDetectionPipeline);
+        camera.openCameraDeviceAsync(new OpenCvCamera.AsyncCameraOpenListener()
+        {
+            @Override
+            public void onOpened()
+            {
+                //camera.startStreaming(800,448, OpenCvCameraRotation.UPRIGHT);
+                camera.startStreaming(864,480, OpenCvCameraRotation.UPRIGHT);
+            }
+
+            @Override
+            public void onError(int errorCode)
+            {
+
+            }
+        });
+
+        telemetry.setMsTransmissionInterval(50);
+
         initSharedPreferences();
         robotManager = new RobotManager(hardwareMap, gamepad1, gamepad2, PowerPlayAuton.navigationPath,
                 PowerPlayAuton.allianceColor, PowerPlayAuton.startingSide,
                 PowerPlayAuton.movementMode, telemetry, elapsedTime);
         IMUPositioning.Initialize(this);
-        robotManager.computerVision.initialize();
         robotManager.closeClaw();
 
-        // Repeatedly run CV
-        RobotManager.ParkingPosition parkingPosition = RobotManager.ParkingPosition.LEFT;
-        while (!isStarted() && !isStopRequested()) {
-            parkingPosition = robotManager.computerVision.getParkingPosition();
-            waitMilliseconds(20);
+        /*
+         * The INIT-loop:
+         * This REPLACES waitForStart!
+         */
+        while (!isStarted() && !isStopRequested())
+        {
+
+            ArrayList<AprilTagDetection> currentDetections = aprilTagDetectionPipeline.getLatestDetections();
+
+            if(currentDetections.size() != 0)
+            {
+                boolean tagFound = false;
+
+                for(AprilTagDetection tag : currentDetections)
+                {
+                    //    if(tag.id == ID_TAG_OF_INTEREST)
+                    if(tag.id == left || tag.id == middle || tag.id == right)
+                    {
+                        tagOfInterest = tag;
+                        tagFound = true;
+                        break;
+                    }
+                }
+
+                if(tagFound)
+                {
+                    telemetry.addLine("Tag of interest is in sight!\n\nLocation data:");
+                    tagToTelemetry(tagOfInterest);
+                }
+                else
+                {
+                    telemetry.addLine("Don't see tag of interest :(");
+
+                    if(tagOfInterest == null)
+                    {
+                        telemetry.addLine("(The tag has never been seen)");
+                    }
+                    else
+                    {
+                        telemetry.addLine("\nBut we HAVE seen the tag before; last seen at:");
+                        tagToTelemetry(tagOfInterest);
+                    }
+                }
+
+            }
+            else
+            {
+                telemetry.addLine("Don't see tag of interest :(");
+
+                if(tagOfInterest == null)
+                {
+                    telemetry.addLine("(The tag has never been seen)");
+                }
+                else
+                {
+                    telemetry.addLine("\nBut we HAVE seen the tag before; last seen at:");
+                    tagToTelemetry(tagOfInterest);
+                }
+
+            }
+
+            telemetry.update();
+            sleep(20);
         }
 
-//        telemetry.addData("Path name", navigationPath.toString());
-//        telemetry.addData("AutonomousPaths.CYCLE_HIGH.size()", Navigation.AutonomousPaths.CYCLE_HIGH.size());
-//        telemetry.addData("PowerPlayAuton.navigationPath.size()", PowerPlayAuton.navigationPath.size());
-//        telemetry.addData("robotManager.navigation.path.size()", robotManager.navigation.path.size());
-//        telemetry.update();
+        /*
+         * The START command just came in: now work off the latest snapshot acquired
+         * during the init loop.
+         */
 
-        // Transform the path and add the parking location based on the result of cv
-        robotManager.navigation.configurePath(startingSide, parkingPosition);
+        /* Update the telemetry */
+        if(tagOfInterest != null)
+        {
+            telemetry.addLine("Tag snapshot:\n");
+            tagToTelemetry(tagOfInterest);
+            telemetry.update();
+        }
+        else
+        {
+            telemetry.addLine("No tag snapshot available, it was never sighted during the init loop :(");
+            telemetry.update();
+        }
 
-        waitMilliseconds(PowerPlayAuton.waitTime);
+        // Placing the first cone
+        move(-Math.PI/2, 1500);
+        move(Math.PI, 375);
+        move(-Math.PI/2, 100);
+        robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+        move(Math.PI/2, 100);
+        robotManager.pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
+        turn(1, 300);
+        move(0, 1000);
+        robotManager.closeClaw();
+        move(Math.PI/2, 1000);
+        turn(-1, 300);
+        move(-Math.PI/2, 100);
+        robotManager.deliverConeHigh(Robot.ClawRotatorState.FRONT);
+        move(Math.PI/2, 100);
 
-        robotManager.runAutonPath();
+//        boolean moving = true;
+        if(tagOfInterest == null || tagOfInterest.id == left)
+        {
+            System.out.println("Left");
+            move(0, 375);
+            move(Math.PI/2, 750);
+            move(0, 750);
+
+        }
+        else if(tagOfInterest.id == middle) {
+            System.out.println("middle");
+            move(0, 375);
+            move(Math.PI/2, 750);
+//            moving = false;
+        }
+        else if(tagOfInterest.id == right) {
+            System.out.println("right");
+            move(Math.PI, 375);
+            move(Math.PI/2, 750);
+        }
+
+//        if (moving) {
+//            waitMilliseconds(675);
+//            robotManager.navigation.stopMovement(robotManager.robot);
+//        }
+
+//        // Move forward
+//        robotManager.navigation.setDriveMotorPowers(-Math.PI / 2, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
+//        waitMilliseconds(750);
+//        robotManager.navigation.stopMovement(robotManager.robot);
 
         while (opModeIsActive()) {}
     }
 
     private void waitMilliseconds(long ms) {
+//        try {
         double start_time = elapsedTime.time();
-        while (opModeIsActive() && elapsedTime.time() - start_time < ms) {}
+        while (elapsedTime.time()-start_time < ms) {
+        }
+//            elapsedTime.wait(ms);
+//        }
+//        catch (InterruptedException e) {}
     }
 
     // ANDROID SHARED PREFERENCES
@@ -117,12 +300,12 @@ public class PowerPlayAuton extends LinearOpMode {
         }
 
         switch(startingSide) {
-            case "LEFT":
-                PowerPlayAuton.startingSide = RobotManager.StartingSide.LEFT;
-                break;
-
             case "RIGHT":
                 PowerPlayAuton.startingSide = RobotManager.StartingSide.RIGHT;
+                break;
+
+            case "LEFT":
+                PowerPlayAuton.startingSide = RobotManager.StartingSide.LEFT;
                 break;
         }
 
@@ -133,7 +316,7 @@ public class PowerPlayAuton extends LinearOpMode {
             PowerPlayAuton.allianceColor = RobotManager.AllianceColor.RED;
         }
 
-        switch (autonMode) {
+//        switch (autonMode) {
 //            case "SMALL":
 //                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.SMALL.clone();
 //                break;
@@ -145,12 +328,17 @@ public class PowerPlayAuton extends LinearOpMode {
 //                break;
 //            case "PARK_ONLY":
 //                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.PARK_ONLY.clone();
-            case "CYCLE_HIGH":
-                PowerPlayAuton.navigationPath = (ArrayList<Position>) Navigation.AutonomousPaths.CYCLE_HIGH.clone();
-                break;
-            case "PARK_ONLY":
-                PowerPlayAuton.navigationPath = new ArrayList<>();
-                break;
-        }
+//        }
+    }
+
+    void tagToTelemetry(AprilTagDetection detection)
+    {
+        telemetry.addLine(String.format("\nDetected tag ID=%d", detection.id));
+        telemetry.addLine(String.format("Translation X: %.2f feet", detection.pose.x*FEET_PER_METER));
+        telemetry.addLine(String.format("Translation Y: %.2f feet", detection.pose.y*FEET_PER_METER));
+        telemetry.addLine(String.format("Translation Z: %.2f feet", detection.pose.z*FEET_PER_METER));
+        telemetry.addLine(String.format("Rotation Yaw: %.2f degrees", Math.toDegrees(detection.pose.yaw)));
+        telemetry.addLine(String.format("Rotation Pitch: %.2f degrees", Math.toDegrees(detection.pose.pitch)));
+        telemetry.addLine(String.format("Rotation Roll: %.2f degrees", Math.toDegrees(detection.pose.roll)));
     }
 }

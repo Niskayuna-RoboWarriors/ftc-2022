@@ -329,6 +329,28 @@ public class RobotManager {
         while (robot.elapsedTime.milliseconds() - startingTime < MechanismDriving.CLAW_SERVO_TIME) {}
     }
 
+    public void deliverConeHigh(Robot.ClawRotatorState clawPos) {
+        moveSlides(this, Robot.SlidesState.HIGH);
+        robot.desiredClawRotatorState = clawPos;
+        mechanismDriving.updateClawRotator(robot);
+        double startTime = robot.elapsedTime.time();
+        while (robot.elapsedTime.time()-startTime < 1000) {}
+        openClaw();
+    }
+
+    public void pickUpStackCone(Robot.SlidesState coneNumber) {
+        moveSlides(this, coneNumber);
+        robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
+        mechanismDriving.updateClawRotator(robot);
+        openClaw();
+    }
+
+    public void retractSlides() {
+        robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
+        mechanismDriving.updateClawRotator(robot);
+        moveSlides(this, Robot.SlidesState.RETRACTED);
+    }
+
     /** Runs the auton path.
      */
 
@@ -337,20 +359,14 @@ public class RobotManager {
             Position pos = navigation.path.get(i);
             // Things to do before moving to the location
             if (pos.getAction() == Navigation.Action.PICK_UP_FIRST_STACK_CONE) {
-                moveSlides(this, Robot.SlidesState.FIRST_STACK_CONE);
-                robot.telemetry.addData("slides state: first stack", Robot.SlidesState.FIRST_STACK_CONE);
+                pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
+                robot.telemetry.addData("slides state: first stack cone", Robot.SlidesState.FIRST_STACK_CONE);
 //                robot.telemetry.update();
-                robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
-                mechanismDriving.updateClawRotator(robot);
-                openClaw();
             }
             else if (pos.getAction() == Navigation.Action.PICK_UP_SECOND_STACK_CONE) {
-                moveSlides(this, Robot.SlidesState.SECOND_STACK_CONE);
-                robot.telemetry.addData("slides state: second stack", Robot.SlidesState.SECOND_STACK_CONE);
+                pickUpStackCone(Robot.SlidesState.SECOND_STACK_CONE);
+                robot.telemetry.addData("slides state: second stack cone", Robot.SlidesState.SECOND_STACK_CONE);
 //                robot.telemetry.update();
-                robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
-                mechanismDriving.updateClawRotator(robot);
-                openClaw();
             }
             else if (pos.getAction() == Navigation.Action.DELIVER_CONE_HIGH) {
                 robot.telemetry.addData("slides state: high", Robot.SlidesState.HIGH);
@@ -371,33 +387,16 @@ public class RobotManager {
                 closeClaw();
             }
             else if (pos.getAction() == Navigation.Action.DELIVER_CONE_HIGH) {
-                moveSlides(this, Robot.SlidesState.HIGH);
-                robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
-                mechanismDriving.updateClawRotator(robot);
-                double startTime = robot.elapsedTime.time();
-                while (robot.elapsedTime.time()-startTime < 1000) {}
-                openClaw();
+                deliverConeHigh(Robot.ClawRotatorState.FRONT);
             }
             else if (pos.getAction() == Navigation.Action.DELIVER_CONE_HIGH_90) {
-                moveSlides(this, Robot.SlidesState.HIGH);
-                robot.desiredClawRotatorState = Robot.ClawRotatorState.SIDE;
-                mechanismDriving.updateClawRotator(robot);
-                double startTime = robot.elapsedTime.time();
-                while (robot.elapsedTime.time()-startTime < 1000) {}
-                openClaw();
+                deliverConeHigh(Robot.ClawRotatorState.SIDE);
             }
             else if (pos.getAction() == Navigation.Action.DELIVER_CONE_HIGH_180) {
-                moveSlides(this, Robot.SlidesState.HIGH);
-                robot.desiredClawRotatorState = Robot.ClawRotatorState.REAR;
-                mechanismDriving.updateClawRotator(robot);
-                double startTime = robot.elapsedTime.time();
-                while (robot.elapsedTime.time()-startTime < 1000) {}
-                openClaw();
+                deliverConeHigh(Robot.ClawRotatorState.REAR);
             }
             else if (pos.getAction() == Navigation.Action.RETRACT_SLIDES) {
-                robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
-                mechanismDriving.updateClawRotator(robot);
-                moveSlides(this, Robot.SlidesState.RETRACTED);
+                retractSlides();
             }
             robot.telemetry.addData("finished!", pos.getName());
             robot.telemetry.update();
