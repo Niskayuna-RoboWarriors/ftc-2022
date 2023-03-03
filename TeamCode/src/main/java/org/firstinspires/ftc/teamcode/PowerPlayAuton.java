@@ -88,6 +88,8 @@ public class PowerPlayAuton extends LinearOpMode {
         telemetry.setMsTransmissionInterval(50);
 
         initSharedPreferences();
+        telemetry.addData("Starting side: ", startingSide);
+        telemetry.update();
         robotManager = new RobotManager(hardwareMap, gamepad1, gamepad2, PowerPlayAuton.navigationPath,
                 PowerPlayAuton.allianceColor, PowerPlayAuton.startingSide,
                 PowerPlayAuton.movementMode, telemetry, elapsedTime);
