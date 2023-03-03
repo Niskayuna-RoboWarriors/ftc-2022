@@ -46,7 +46,7 @@ public class RobotManager {
 
         elapsedTime.reset();
         robot = new Robot(hardwareMap, telemetry, elapsedTime);
-        robot.telemetry.addData("auton path", path.size());
+//         robot.telemetry.addData("auton path", path.size());
         navigation = new Navigation(path, allianceColor, startingSide, movementMode);
         mechanismDriving = new MechanismDriving();
 
