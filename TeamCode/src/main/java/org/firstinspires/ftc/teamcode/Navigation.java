@@ -65,7 +65,7 @@ public class Navigation {
     // Speeds relative to one another. RR is positive on purpose!
 //                                  RL   RR   FL   FR
     // 0.935*0.96 = 0.8976
-    public double[] wheel_speeds = {1, 0.96, -0.935, -0.8976};
+    public double[] wheel_speeds = {1, 1, -0.92, -0.92}; //BL, BR, FL, FR Temporary Note: currently FR from -0.90 to -0.92
 //     public double[] wheel_speeds = {0.3, 0.3, -0.3, -0.3};
 
     public double strafePower;  // Tele-Op only

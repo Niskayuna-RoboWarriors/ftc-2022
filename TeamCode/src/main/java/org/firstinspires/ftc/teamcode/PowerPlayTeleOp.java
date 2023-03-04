@@ -45,7 +45,7 @@ public class PowerPlayTeleOp extends OpMode {
         telemetry.addData("after read controller inputs", robotManager.elapsedTime.time()-start_time);
         robotManager.readSensorInputs();
         telemetry.addData("after read sensor inputs", robotManager.elapsedTime.time()-start_time);
-        robotManager.driveMechanisms(robotManager);
+        robotManager.driveMechanisms(robotManager, true);
         telemetry.addData("after drive mechanisms", robotManager.elapsedTime.time()-start_time);
         robotManager.maneuver();
         telemetry.addData("after maneuver", robotManager.elapsedTime.time()-start_time);

@@ -163,8 +163,8 @@ public class RobotManager {
         robot.telemetry.addData("after slides limit",robot.elapsedTime.time()-startTime);
         readClawLimitSwitch();
         robot.telemetry.addData("after claw limit", robot.elapsedTime.time()-startTime);
-        readDistanceSensor();
-        robot.telemetry.addData("after distance sensor", robot.elapsedTime.time()-startTime);
+        //readDistanceSensor();
+        //robot.telemetry.addData("after distance sensor", robot.elapsedTime.time()-startTime);
     }
 
 
@@ -211,15 +211,15 @@ public class RobotManager {
 
     /** Calls all non-blocking FSM methods to read from state and act accordingly.
      */
-    public void driveMechanisms(RobotManager robotManager) {
+    public void driveMechanisms(RobotManager robotManager, boolean enableLimitSwitch) {
 //        double slidesPower = Range.clip(Math.abs(gamepads.getAnalogValues().gamepad2LeftStickY), 0, 1);
 //        if (slidesPower < JOYSTICK_DEAD_ZONE_SIZE) {
 //            slidesPower = MechanismDriving.SLIDES_MAX_SPEED;
 //        }
-        double slidesPower = MechanismDriving.SLIDES_MAX_SPEED;
+        double slidesPower = MechanismDriving.SLIDES_MAX_MASTER_POWER;
 
         mechanismDriving.updateClawRotator(robot);
-        mechanismDriving.updateSlides(robotManager, robot, slidesPower);
+        mechanismDriving.updateSlides(robotManager, robot, slidesPower, enableLimitSwitch);
         mechanismDriving.updateClaw(robot);
 //        if ()
     }
@@ -330,7 +330,7 @@ public class RobotManager {
     }
 
     public void deliverConeHigh(Robot.ClawRotatorState clawPos) {
-        moveSlides(this, Robot.SlidesState.HIGH);
+        moveSlides(this, Robot.SlidesState.HIGH, false);
         robot.desiredClawRotatorState = clawPos;
         mechanismDriving.updateClawRotator(robot);
         double startTime = robot.elapsedTime.time();
@@ -341,7 +341,7 @@ public class RobotManager {
     }
 
     public void pickUpStackCone(Robot.SlidesState coneNumber) {
-        moveSlides(this, coneNumber);
+        moveSlides(this, coneNumber, false);
         robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
         mechanismDriving.updateClawRotator(robot);
         openClaw();
@@ -350,7 +350,7 @@ public class RobotManager {
     public void retractSlides() {
         robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
         mechanismDriving.updateClawRotator(robot);
-        moveSlides(this, Robot.SlidesState.RETRACTED);
+        moveSlides(this, Robot.SlidesState.RETRACTED, false);
     }
 
     /** Runs the auton path.
@@ -407,9 +407,9 @@ public class RobotManager {
 
     /** Blocking method to raise/lower linear slides during Auton.
      */
-    public void moveSlides(RobotManager robotManager, Robot.SlidesState targetSlidesState) {
+    public void moveSlides(RobotManager robotManager, Robot.SlidesState targetSlidesState, boolean enableLimitSwitch) {
         Robot.desiredSlidesState = targetSlidesState;
-        while (!mechanismDriving.updateSlides(robotManager, robot, MechanismDriving.SLIDES_MAX_SPEED)) {}
+        while (!mechanismDriving.updateSlides(robotManager, robot, MechanismDriving.SLIDES_MAX_MASTER_POWER, enableLimitSwitch)) {}
     }
 
     /** Finds the lowered SlidesState given a standard SlidesState

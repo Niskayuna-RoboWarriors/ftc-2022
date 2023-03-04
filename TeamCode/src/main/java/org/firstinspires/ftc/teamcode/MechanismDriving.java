@@ -14,9 +14,9 @@ public class MechanismDriving {
 
     public static Map<Robot.SlidesState, Integer> slidePositions = new HashMap<Robot.SlidesState, Integer>() {{
        put(Robot.SlidesState.RETRACTED, 0);
-       put(Robot.SlidesState.LOW, 1170);
-       put(Robot.SlidesState.MEDIUM, 1996);
-       put(Robot.SlidesState.HIGH, 2670);
+       put(Robot.SlidesState.LOW, 1090);
+       put(Robot.SlidesState.MEDIUM, 1870);
+       put(Robot.SlidesState.HIGH, 2590);
        put(Robot.SlidesState.UNREADY, 0);
 
        put(Robot.SlidesState.FIRST_STACK_CONE, 500);
@@ -34,10 +34,12 @@ public class MechanismDriving {
     public static final double CLAW_ROTATOR_FRONT_POS = 0, CLAW_ROTATOR_REAR_POS = 0.8, CLAW_ROTATOR_SIDE_POS = 0.4;
     // How long it takes for the horseshoe wheels to be guaranteed to have pushed the cone into the horseshoe.
     public static final long HORSESHOE_TIME = 500;
-    public static final int EPSILON = 150;  // slide encoder position tolerance;
+    public static final int EPSILON = 35;  // slide encoder position tolerance; 50
 
     public static final double SLIDE_RAMP_DIST = 400;
-    public static final double SLIDES_MAX_SPEED = 1;
+    public static final double SLIDES_MAX_MASTER_POWER = 1; //This gets multiplied by the max retract and raise power
+    public static final double SLIDES_MAX_RETRACT_POWER = 0.75;
+    public static final double SLIDES_MAX_RAISE_POWER = 1;
     public static final double SLIDE_MIN_SPEED = 0.4;
     public static final double SLIDE_REDUCED_SPEED_COEF = 0.9;
 
@@ -162,23 +164,24 @@ public class MechanismDriving {
      *
      * @return whether the slides are in the desired position.
      */
-    public boolean updateSlides(RobotManager robotManager, Robot robot, double slidesPower) {
-
+    public boolean updateSlides(RobotManager robotManager, Robot robot, double slidesPower, boolean enableLimitSwitch) {
        if (Robot.desiredSlidesState != Robot.SlidesState.UNREADY) {
            if(!testing)
                setSlidePosition(robot, getTargetSlidesEncoderCount(robot));
 
-           // Move the claw limit switch servo
            robot.telemetry.addData("desired slides state", robot.desiredSlidesState);
-           if (Robot.desiredSlidesState == Robot.SlidesState.HIGH || Robot.desiredSlidesState == Robot.SlidesState.MEDIUM) {
-               robot.desiredClawLimitSwitchServoState = Robot.ClawLimitSwitchServoState.LOW;
-               updateClawLimitSwitchServo(robot);
-               robot.telemetry.addData("CLAW LIMIT SWITCH SET TO LOW", robot.desiredClawLimitSwitchServoState);
-           }
-           if (Robot.desiredSlidesState == Robot.SlidesState.RETRACTED || Robot.desiredSlidesState == Robot.SlidesState.LOW) {
-               robot.desiredClawLimitSwitchServoState = Robot.ClawLimitSwitchServoState.HIGH;
-               updateClawLimitSwitchServo(robot);
-               robot.telemetry.addData("CLAW LIMIT SWITCH SET TO HIGH", robot.desiredClawLimitSwitchServoState);
+
+           // Move the claw limit switch servo
+           if(enableLimitSwitch) {
+               if (Robot.desiredSlidesState == Robot.SlidesState.HIGH || Robot.desiredSlidesState == Robot.SlidesState.MEDIUM) {
+                   robot.desiredClawLimitSwitchServoState = Robot.ClawLimitSwitchServoState.LOW;
+                   updateClawLimitSwitchServo(robot);
+                   robot.telemetry.addData("CLAW LIMIT SWITCH SET TO LOW", robot.desiredClawLimitSwitchServoState);
+               } else if (Robot.desiredSlidesState == Robot.SlidesState.RETRACTED || Robot.desiredSlidesState == Robot.SlidesState.LOW) {
+                   robot.desiredClawLimitSwitchServoState = Robot.ClawLimitSwitchServoState.HIGH;
+                   updateClawLimitSwitchServo(robot);
+                   robot.telemetry.addData("CLAW LIMIT SWITCH SET TO HIGH", robot.desiredClawLimitSwitchServoState);
+               }
            }
 //           robot.telemetry.update();
 
@@ -202,7 +205,7 @@ public class MechanismDriving {
 
            // Slides need to be moved
            // Speed is proportional to the fraction of the ramp distance that we have left
-           double slidesSpeed = slidesPower * clipAbsVal(avgSlideDiff / SLIDE_RAMP_DIST, SLIDE_MIN_SPEED, 1);
+           double slidesSpeed = slidesPower * (desiredSlidePosition > Math.abs(getAverageSlidePosition(robot)) ? SLIDES_MAX_RAISE_POWER : SLIDES_MAX_RETRACT_POWER) * SLIDES_MAX_RAISE_POWER * clipAbsVal(avgSlideDiff / SLIDE_RAMP_DIST, SLIDE_MIN_SPEED, 1);
            double reducedSlidesSpeed = clipAbsVal(SLIDE_REDUCED_SPEED_COEF * slidesSpeed, SLIDE_MIN_SPEED, 1);
 
            // Slow down whichever motor is ahead
