@@ -19,8 +19,8 @@ public class MechanismDriving {
        put(Robot.SlidesState.HIGH, 2590);
        put(Robot.SlidesState.UNREADY, 0);
 
-       put(Robot.SlidesState.FIRST_STACK_CONE, 500);
-       put(Robot.SlidesState.SECOND_STACK_CONE, 375);
+       put(Robot.SlidesState.FIRST_STACK_CONE, 625);
+       put(Robot.SlidesState.SECOND_STACK_CONE, 500);
     }};
     public static final double CLAW_CLOSED_POS = 0.83, CLAW_OPEN_POS = 0.65; //These are not final values
 
@@ -205,8 +205,11 @@ public class MechanismDriving {
 
            // Slides need to be moved
            // Speed is proportional to the fraction of the ramp distance that we have left
-           double slidesSpeed = slidesPower * (desiredSlidePosition > Math.abs(getAverageSlidePosition(robot)) ? SLIDES_MAX_RAISE_POWER : SLIDES_MAX_RETRACT_POWER) * SLIDES_MAX_RAISE_POWER * clipAbsVal(avgSlideDiff / SLIDE_RAMP_DIST, SLIDE_MIN_SPEED, 1);
+//           double slidesSpeed = slidesPower * (desiredSlidePosition > Math.abs(getAverageSlidePosition(robot)) ? SLIDES_MAX_RAISE_POWER : SLIDES_MAX_RETRACT_POWER) * SLIDES_MAX_RAISE_POWER * clipAbsVal(avgSlideDiff / SLIDE_RAMP_DIST, SLIDE_MIN_SPEED, 1);
+//           double slidesSpeed = slidesPower * (avgSlideDiff > 0 ? SLIDES_MAX_RAISE_POWER : SLIDES_MAX_RETRACT_POWER) * SLIDES_MAX_RAISE_POWER * clipAbsVal(avgSlideDiff / SLIDE_RAMP_DIST, SLIDE_MIN_SPEED, 1);
+           double slidesSpeed = slidesPower * clipAbsVal(avgSlideDiff / SLIDE_RAMP_DIST, SLIDE_MIN_SPEED, 1);
            double reducedSlidesSpeed = clipAbsVal(SLIDE_REDUCED_SPEED_COEF * slidesSpeed, SLIDE_MIN_SPEED, 1);
+//           double reducedslidesSpeed = slidesPower * (avgSlideDiff > 0 ? SLIDES_MAX_RAISE_POWER : SLIDES_MAX_RETRACT_POWER) * SLIDE_REDUCED_SPEED_COEF * clipAbsVal(avgSlideDiff / SLIDE_RAMP_DIST, SLIDE_MIN_SPEED, 1);
 
            // Slow down whichever motor is ahead
            if (Math.abs(slideDiff1) > Math.abs(slideDiff2)) {

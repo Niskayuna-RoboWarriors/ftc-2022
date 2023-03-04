@@ -28,7 +28,7 @@ public class PowerPlayAuton extends LinearOpMode {
 
     static final double FEET_PER_METER = 3.28084;
     public static final long TILE_TIME = 680;
-    public static final long ROTATION_TIME = 1050;
+    public static final long ROTATION_TIME = 1100;
 
     // Lens intrinsics
     // UNITS ARE PIXELS
@@ -186,23 +186,24 @@ public class PowerPlayAuton extends LinearOpMode {
             robotManager.navigation.setDriveMotorPowers(Math.PI/2, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
             waitMilliseconds(3*TILE_TIME);
             robotManager.navigation.stopMovement(robotManager.robot);
-             move(-Math.PI/2, (long) (0.5*TILE_TIME));
+            move(-Math.PI/2, (long) (0.6*TILE_TIME));
+//            move(Math.PI, (long) (0.2*TILE_TIME));
 //             move(Math.PI / 2, 100);
             turn(1, ROTATION_TIME);
             robotManager.deliverConeHigh(Robot.ClawRotatorState.REAR);
-            move(0, (long) (0.7*TILE_TIME));
+            move(0, (long) (1.1*TILE_TIME));
 //             move(-Math.PI / 2, 100);
 
             // Picking up a cone from the stack
-            move(-Math.PI / 2, (long) (1.25*TILE_TIME));
+            move(-Math.PI / 2, (long) (1.05*TILE_TIME));
             robotManager.pickUpStackCone(Robot.SlidesState.FIRST_STACK_CONE);
 //            move(Math.PI/2, (long) (1.25*TILE_TIME));
             robotManager.closeClaw();
             robotManager.moveSlides(robotManager, Robot.SlidesState.LOW, false);
 
             // Placing the cone from the stack on the high junction closest to the cone stack
-            move(Math.PI / 2, (long) (1.25*TILE_TIME));
-            move(Math.PI, (long) (0.7*TILE_TIME));
+            move(Math.PI / 2, (long) (1.05*TILE_TIME));
+            move(Math.PI, (long) (0.95*TILE_TIME));
             move(-Math.PI / 2, 100);
             robotManager.deliverConeHigh(Robot.ClawRotatorState.REAR);
             move(Math.PI / 2, 100);
@@ -213,25 +214,25 @@ public class PowerPlayAuton extends LinearOpMode {
 
             if (tagOfInterest == null || tagOfInterest.id == left) {
                 System.out.println("Left");
-                move(0, (long) (1.5*TILE_TIME));
-                move(-Math.PI/2, TILE_TIME);
+                move(0, (long) (2*TILE_TIME));
+                move(-Math.PI/2, (long) 1.2*TILE_TIME);
 //                move(Math.PI/2, TILE_TIME);
             }
             else if (tagOfInterest.id == middle) {
                 System.out.println("middle");
-                move(0, (long) (1.5*TILE_TIME));
+                move(0, (long) (2*TILE_TIME));
 //                move(-Math.PI/2, TILE_TIME);
             }
             else if (tagOfInterest.id == right) {
                 System.out.println("right");
-                move(0, (long) (1.5*TILE_TIME));
-                move(Math.PI/2, (long) (1*TILE_TIME));
+                move(0, (long) (2*TILE_TIME));
+                move(Math.PI/2, (long) (1.2*TILE_TIME));
             }
         }
         else if (startingSide == RobotManager.StartingSide.RIGHT) {
              // Placing the preloaded cone on the high junction closest to the cone stack
-             robotManager.navigation.setDriveMotorPowers(Math.PI/2, Navigation.MAX_STRAFE_POWER/2, 0, robotManager.robot, false);
-             waitMilliseconds(6*TILE_TIME);
+             robotManager.navigation.setDriveMotorPowers(Math.PI/2, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
+             waitMilliseconds(3*TILE_TIME);
              robotManager.navigation.stopMovement(robotManager.robot);
              move(-Math.PI/2, (long) (0.5*TILE_TIME));
 //              move(Math.PI / 2, 100);

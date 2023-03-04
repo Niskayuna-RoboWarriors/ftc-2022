@@ -62,11 +62,12 @@ public class Navigation {
     // INSTANCE ATTRIBUTES
     // ===================
 
-    // Speeds relative to one another. RR is positive on purpose!
+    // Speeds relative to one another. RR is positive on purpose!    public double[] wheel_speeds = {1, 1, -1, -1}; //BL, BR, FL, FR Temporary Note: currently FR from -0.90 to -0.92
+
 //                                  RL   RR   FL   FR
     // 0.935*0.96 = 0.8976
-    public double[] wheel_speeds = {1, 1, -0.92, -0.92}; //BL, BR, FL, FR Temporary Note: currently FR from -0.90 to -0.92
-//     public double[] wheel_speeds = {0.3, 0.3, -0.3, -0.3};
+    public double[] wheel_speeds = {0.95, 1, -1, -0.97}; //BL, BR, FL, FR Temporary Note: currently FR from -0.90 to -0.92
+//     public double[] wheel_speeds = {0.32, 0.33, -0.33, -0.32};
 
     public double strafePower;  // Tele-Op only
 
