@@ -245,14 +245,14 @@ public class RobotManager {
     }
 
     public void readClawLimitSwitch() {
-        boolean currentClawLimitSwitchState = robot.clawLimitSwitch.isPressed();
+        boolean currentClawLimitSwitchState = robot.clawLimitSwitch.getState();
         if (currentClawLimitSwitchState) {
             robot.telemetry.addData("Claw limit switch state", "pressed");
         } else {
             robot.telemetry.addData("Claw limit switch state", "unpressed");
         }
         // Only true on the first frame that it is pressed - don't want it to get stuck in STOPPED state.
-        if (currentClawLimitSwitchState && robot.desiredClawLimitSwitchServoState == Robot.ClawLimitSwitchServoState.LOW) {
+        if (currentClawLimitSwitchState && !robot.previousClawLimitSwitchState && robot.desiredClawLimitSwitchServoState == Robot.ClawLimitSwitchServoState.LOW) {
             //Open claw (and don't wait for it to finish)
             robot.desiredClawState = Robot.ClawState.OPEN;
             mechanismDriving.updateClaw(robot);

@@ -55,7 +55,7 @@ public class Robot {
     public DcMotor slidesMotor1, slidesMotor2, secondarySlidesMotor;
     public Servo clawRotator, claw, clawLimitSwitchServo, secondaryClaw, secondaryClawRotator;
     public TouchSensor slidesLimitSwitch;
-    public TouchSensor clawLimitSwitch;
+    public DigitalChannel clawLimitSwitch;
     public DistanceSensor clawDistanceSensor;
 
 
@@ -89,7 +89,7 @@ public class Robot {
         secondaryClawRotator = hardwareMap.get(Servo.class, RobotConfig.ServoNames.get(RobotConfig.Servos.SECONDARY_CLAW_ROTATOR));
 
         slidesLimitSwitch = hardwareMap.get(TouchSensor.class, RobotConfig.SwitchNames.get(RobotConfig.Switches.SLIDES_LIMIT));
-        clawLimitSwitch = hardwareMap.get(TouchSensor.class, RobotConfig.SwitchNames.get(RobotConfig.Switches.CLAW_LIMIT));
+        clawLimitSwitch = hardwareMap.get(DigitalChannel.class, RobotConfig.SwitchNames.get(RobotConfig.Switches.CLAW_LIMIT));
 
         clawDistanceSensor = hardwareMap.get(DistanceSensor.class, RobotConfig.DistanceSensorNames.get(RobotConfig.DistanceSensors.CLAW_DISTANCE_SENSOR));
 

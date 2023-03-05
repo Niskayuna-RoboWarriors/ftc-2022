@@ -240,7 +240,7 @@ public class Navigation {
             moveDirection = Math.PI / 2;
         }
         else {
-            moveDirection = -moveDirection;
+            moveDirection = moveDirection += Math.PI;
         }
 
         // Field-centric navigation

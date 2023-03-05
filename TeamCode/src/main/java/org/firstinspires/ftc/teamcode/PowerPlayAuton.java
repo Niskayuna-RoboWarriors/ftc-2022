@@ -25,11 +25,11 @@ public class PowerPlayAuton extends LinearOpMode {
     private ElapsedTime elapsedTime = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
     OpenCvCamera camera;
     AprilTagDetectionPipeline aprilTagDetectionPipeline;
-    String autonMode = "";
+    String autonMode;
+    public static final long TILE_TIME = 720;
+    public static final long ROTATION_TIME = 1100;
 
     static final double FEET_PER_METER = 3.28084;
-    public static final long TILE_TIME = 680;
-    public static final long ROTATION_TIME = 1100;
 
     // Lens intrinsics
     // UNITS ARE PIXELS
@@ -66,12 +66,35 @@ public class PowerPlayAuton extends LinearOpMode {
 
     @Override
     public void runOpMode() {
+        int cameraMonitorViewId = hardwareMap.appContext.getResources().getIdentifier("cameraMonitorViewId", "id", hardwareMap.appContext.getPackageName());
+//        camera = OpenCvCameraFactory.getInstance().createWebcam(hardwareMap.get(WebcamName.class, "Webcam 1"), cameraMonitorViewId);
+        camera = OpenCvCameraFactory.getInstance().createInternalCamera(OpenCvInternalCamera.CameraDirection.BACK, cameraMonitorViewId);
+        aprilTagDetectionPipeline = new AprilTagDetectionPipeline(tagsize, fx, fy, cx, cy);
+
+        camera.setPipeline(aprilTagDetectionPipeline);
+        camera.openCameraDeviceAsync(new OpenCvCamera.AsyncCameraOpenListener()
+        {
+            @Override
+            public void onOpened()
+            {
+                //camera.startStreaming(800,448, OpenCvCameraRotation.UPRIGHT);
+                camera.startStreaming(864,480, OpenCvCameraRotation.UPRIGHT);
+            }
+
+            @Override
+            public void onError(int errorCode)
+            {
+
+            }
+        });
+
+        telemetry.setMsTransmissionInterval(50);
+
         initSharedPreferences();
         robotManager = new RobotManager(hardwareMap, gamepad1, gamepad2, PowerPlayAuton.navigationPath,
                 PowerPlayAuton.allianceColor, PowerPlayAuton.startingSide,
                 PowerPlayAuton.movementMode, telemetry, elapsedTime);
         IMUPositioning.Initialize(this);
-        robotManager.computerVision.initialize();
         robotManager.closeClaw();
 
         /*
@@ -102,7 +125,7 @@ public class PowerPlayAuton extends LinearOpMode {
                 {
                     telemetry.addLine("Tag of interest is in sight!\n\nLocation data:");
                     tagToTelemetry(tagOfInterest);
-                }
+            }
                 else
                 {
                     telemetry.addLine("Don't see tag of interest :(");
@@ -157,56 +180,35 @@ public class PowerPlayAuton extends LinearOpMode {
             telemetry.update();
         }
 
-        // Repeatedly run CV
-        RobotManager.ParkingPosition parkingPosition = RobotManager.ParkingPosition.LEFT;
-        while (!isStarted() && !isStopRequested()) {
-            parkingPosition = robotManager.computerVision.getParkingPosition();
-            waitMilliseconds(20);
+        boolean moving = true;
+        if(tagOfInterest == null || tagOfInterest.id == left)
+        {
+            move(Math.PI, 2*TILE_TIME);
+
+        }
+        else if(tagOfInterest.id == middle) {
+//            moving = false;
+        }
+        else if(tagOfInterest.id == right) {
+            move(0, TILE_TIME);
         }
 
-        if (this.autonMode.equals("CYCLE_HIGH")) {
-            // Transform the path and add the parking location based on the result of cv
-            robotManager.navigation.configurePath(startingSide, parkingPosition);
+//        robotManager.navigation.stopMovement(robotManager.robot);
 
-            waitMilliseconds(PowerPlayAuton.waitTime);
+                // Move forward
+        move(Math.PI/2, (long)(1.2*TILE_TIME));
 
-            robotManager.runAutonPath();
-
-            while (opModeIsActive()) {}
-        }
-        else {
-            boolean moving = true;
-            if(tagOfInterest == null || tagOfInterest.id == left)
-            {
-                System.out.println("Left");
-                robotManager.navigation.setDriveMotorPowers(0, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
-                waitMilliseconds(100);
-
-            }
-            else if(tagOfInterest.id == middle) {
-                System.out.println("middle");
-                moving = false;
-            }
-            else if(tagOfInterest.id == right) {
-                System.out.println("right");
-                robotManager.navigation.setDriveMotorPowers(Math.PI, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
-            }
-
-            if (moving) {
-                waitMilliseconds(TILE_TIME);
-                robotManager.navigation.stopMovement(robotManager.robot);
-            }
-
-            // Move forward
-            robotManager.navigation.setDriveMotorPowers(-Math.PI / 2, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
-            waitMilliseconds(TILE_TIME);
-            robotManager.navigation.stopMovement(robotManager.robot);
-        }
+        while (opModeIsActive()) {}
     }
 
-    public void waitMilliseconds(long ms) {
-        double start_time = elapsedTime.time();
-        while (opModeIsActive() && elapsedTime.time() - start_time < ms) {}
+    private void waitMilliseconds(long ms) {
+//        try {
+            double start_time = elapsedTime.time();
+            while (elapsedTime.time()-start_time < ms) {
+            }
+//            elapsedTime.wait(ms);
+//        }
+//        catch (InterruptedException e) {}
     }
 
     // ANDROID SHARED PREFERENCES
@@ -229,7 +231,7 @@ public class PowerPlayAuton extends LinearOpMode {
         String waitTime = sharedPrefs.getString("wait_time", "ERROR");
         String startingSide = sharedPrefs.getString("starting_side", "ERROR");
         String allianceColor = sharedPrefs.getString("alliance_color", "ERROR");
-        this.autonMode = sharedPrefs.getString("auton_type", "ERROR");
+        autonMode = sharedPrefs.getString("auton_type", "ERROR");
 
         telemetry.addData("Movement mode", movementMode);
         telemetry.addData("Wait time", waitTime);
@@ -289,27 +291,27 @@ public class PowerPlayAuton extends LinearOpMode {
         }
 
         switch (autonMode) {
-//            case "SMALL":
-//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.SMALL.clone();
-//                break;
-//            case "MEDIUM":
-//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.MEDIUM.clone();
-//                break;
-//            case "LARGE":
-//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.LARGE.clone();
-//                break;
-//            case "PARK_ONLY":
-//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.PARK_ONLY.clone();
+//             case "SMALL":
+//                 PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.SMALL.clone();
+//                 break;
+//             case "MEDIUM":
+//                 PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.MEDIUM.clone();
+//                 break;
+//             case "LARGE":
+//                 PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.LARGE.clone();
+//                 break;
+//             case "PARK_ONLY":
+//                 PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.PARK_ONLY.clone();
             case "CYCLE_HIGH":
                 PowerPlayAuton.navigationPath = (ArrayList<Position>) Navigation.AutonomousPaths.CYCLE_HIGH.clone();
                 break;
             case "PARK_ONLY":
                 PowerPlayAuton.navigationPath = new ArrayList<>();
-                break;
-        }
+                break;        }
     }
 
-    void tagToTelemetry(AprilTagDetection detection) {
+    void tagToTelemetry(AprilTagDetection detection)
+    {
         telemetry.addLine(String.format("\nDetected tag ID=%d", detection.id));
         telemetry.addLine(String.format("Translation X: %.2f feet", detection.pose.x*FEET_PER_METER));
         telemetry.addLine(String.format("Translation Y: %.2f feet", detection.pose.y*FEET_PER_METER));
