@@ -48,7 +48,7 @@ public class MechanismDriving {
     public static final double CLAW_ROTATOR_FRONT_POS = 0, CLAW_ROTATOR_REAR_POS = 0.82, CLAW_ROTATOR_SIDE_POS = 0.41;
     // How long it takes for the horseshoe wheels to be guaranteed to have pushed the cone into the horseshoe.
     public static final long HORSESHOE_TIME = 500;
-    public static final int EPSILON = 150;  // slide encoder position tolerance;
+    public static final int EPSILON = 35;  // slide encoder position tolerance;
 
     public static final double SLIDE_RAMP_DIST = 400;
     public static final double SLIDES_MAX_SPEED = 1;
