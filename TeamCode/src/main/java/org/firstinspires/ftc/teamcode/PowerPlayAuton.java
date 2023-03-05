@@ -183,10 +183,14 @@ public class PowerPlayAuton extends LinearOpMode {
 
         if(!parkOnly) {
             placeHighJunction();
-
-            move(Math.PI, (long) (0.675 * TILE_TIME), 1); //Move out of large junction area
+            if (PowerPlayAuton.startingSide == RobotManager.StartingSide.LEFT) {
+                move(Math.PI, (long) (0.675 * TILE_TIME), 1); //Move out of large junction area
+            }
+            else {
+                move(0, (long) (0.675 * TILE_TIME), 1); //Move out of large junction area
+            }
             robotManager.waitMilliseconds(250);
-            move(-Math.PI / 2, (long) (1 * TILE_TIME), 1); //go back
+            move(-Math.PI / 2, (long) (1.05 * TILE_TIME), 1); //go back
             robotManager.waitMilliseconds(250);
         }
 
@@ -225,10 +229,15 @@ public class PowerPlayAuton extends LinearOpMode {
     }
 
     private void placeHighJunction() {
-        move(Math.PI / 2, (long) (1.99 * TILE_TIME), 1);
+        move(Math.PI / 2, (long) (2.04 * TILE_TIME), 1);
         robotManager.waitMilliseconds(250);
-        move(0, (long) (0.7 * TILE_TIME), 1);
+        if (PowerPlayAuton.startingSide == RobotManager.StartingSide.LEFT) {
+            move(0, (long) (0.7 * TILE_TIME), 1);
+        }
+        else {
+            move(Math.PI, (long) (0.7 * TILE_TIME), 1);
 
+        }
         //robotManager.deliverConeHigh(Robot.ClawRotatorState.REAR);
         robotManager.moveSlides(robotManager, Robot.SlidesState.HIGH);
         robotManager.robot.desiredClawRotatorState = Robot.ClawRotatorState.REAR; //CLAW POS HERE

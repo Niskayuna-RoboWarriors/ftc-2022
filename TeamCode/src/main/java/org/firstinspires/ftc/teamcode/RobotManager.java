@@ -47,6 +47,7 @@ public class RobotManager {
         elapsedTime.reset();
         robot = new Robot(hardwareMap, telemetry, elapsedTime);
         robot.telemetry.addData("auton path", path.size());
+        robot.telemetry.update();
         navigation = new Navigation(path, allianceColor, startingSide, movementMode);
         mechanismDriving = new MechanismDriving();
 
@@ -217,8 +218,8 @@ public class RobotManager {
         double startTime = robot.elapsedTime.time();
         readSlidesLimitSwitch();
         robot.telemetry.addData("after slides limit",robot.elapsedTime.time()-startTime);
-        readClawLimitSwitch();
-        robot.telemetry.addData("after claw limit", robot.elapsedTime.time()-startTime);
+//        readClawLimitSwitch();
+//        robot.telemetry.addData("after claw limit", robot.elapsedTime.time()-startTime);
 //         readDistanceSensor();
 //        robot.telemetry.addData("after distance sensor", robot.elapsedTime.time()-startTime);
     }
