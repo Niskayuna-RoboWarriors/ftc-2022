@@ -89,8 +89,13 @@ public class PositionManager {
  */
 class EncoderPositioning {
     static int ENCODER_COUNTS_PER_ROTATION = 560;
-    static double MAGICAL_FACTOR = 8.64;
-    static double MAGICAL_RATIO = MAGICAL_FACTOR / ENCODER_COUNTS_PER_ROTATION;
+
+//    static double MAGICAL_FACTOR = 8.64;
+    static double MAGICAL_FACTOR_X = 17.6;
+    static double MAGICAL_FACTOR_Y = 18.4;
+
+    static double MAGICAL_RATIO_X = MAGICAL_FACTOR_X / ENCODER_COUNTS_PER_ROTATION;
+    static double MAGICAL_RATIO_Y = MAGICAL_FACTOR_Y / ENCODER_COUNTS_PER_ROTATION;
 
     static HashMap<RobotConfig.DriveMotors, Double> RollerAngles = new HashMap<RobotConfig.DriveMotors, Double>() {{
         put(RobotConfig.DriveMotors.FRONT_RIGHT, Math.PI / 4.d);
@@ -132,13 +137,28 @@ class EncoderPositioning {
             int encoderCounts = Objects.requireNonNull(wheelEncoderCounts.get(rollerAngle.getKey()));
             double force = rollerAngle.getValue();
 
-
-            deltaPSumX += -encoderCounts * ((Math.cos(theta) * Math.cos(force)) - (Math.sin(theta) * Math.sin(force))) / 2.0;
-            deltaPSumY += encoderCounts * ((Math.sin(theta) * Math.cos(force)) + (Math.cos(theta) * Math.sin(force))) / 2.0;
+//            encoderCounts = 1;
+//            deltaPSumX += encoderCounts * ((Math.cos(theta) * Math.cos(force)) - (Math.sin(theta) * Math.sin(force))) / 2.0;
+//            deltaPSumY += encoderCounts * ((Math.sin(theta) * Math.cos(force)) + (Math.cos(theta) * Math.sin(force))) / 2.0;
+            // New testing code
+            if (rollerAngle.getKey().toString().equals("FRONT_LEFT") || rollerAngle.getKey().toString().equals("REAR_LEFT")) {
+                deltaPSumY += -encoderCounts * ((Math.cos(theta) * Math.cos(force)) - (Math.sin(theta) * Math.sin(force))) / 2.0;
+                deltaPSumX += -encoderCounts * ((Math.sin(theta) * Math.cos(force)) + (Math.cos(theta) * Math.sin(force))) / 2.0;
+            }
+            else {
+                deltaPSumY += encoderCounts * ((Math.cos(theta) * Math.cos(force)) - (Math.sin(theta) * Math.sin(force))) / 2.0;
+                deltaPSumX += encoderCounts * ((Math.sin(theta) * Math.cos(force)) + (Math.cos(theta) * Math.sin(force))) / 2.0;
+            }
+//            robot.telemetry.addData("encoder counts", encoderCounts);
+//            robot.telemetry.addData("name", rollerAngle.getKey());
+//            robot.telemetry.addData("force", force);
+//            robot.telemetry.addData("deltaPSumX", deltaPSumX);
+//            robot.telemetry.addData("deltaPSumY", deltaPSumY);
         }
 
         resetEncoders(robot);
-        return new Position(MAGICAL_RATIO * deltaPSumX, MAGICAL_RATIO * deltaPSumY, 0.0);
+
+        return new Position(MAGICAL_RATIO_X * deltaPSumX, MAGICAL_RATIO_Y * deltaPSumY, 0.0);
     }
 
 

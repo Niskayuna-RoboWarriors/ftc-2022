@@ -2,6 +2,7 @@ package org.firstinspires.ftc.teamcode;
 
 
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
 import java.util.ArrayList;
@@ -13,31 +14,43 @@ import java.util.Objects;
  */
 public class Navigation {
     public enum RotationDirection {CLOCKWISE, COUNTERCLOCKWISE}
-    public static enum Action {NONE, DELIVER_CONE_LOW, DELIVER_CONE_MEDIUM, DELIVER_CONE_HIGH, PICK_UP_CONE}
+    public static enum Action {NONE, DELIVER_CONE_LOW, DELIVER_CONE_MEDIUM, DELIVER_CONE_HIGH, DELIVER_CONE_HIGH_90,
+        DELIVER_CONE_HIGH_180, PICK_UP_FIRST_STACK_CONE, PICK_UP_SECOND_STACK_CONE, RETRACT_SLIDES}
     // AUTON CONSTANTS
     // ===============
     public enum MovementMode {FORWARD_ONLY, STRAFE}
-
-    static final double STRAFE_RAMP_DISTANCE = 3;  // Inches
-    static final double ROTATION_RAMP_DISTANCE = Math.PI / 3;  // Radians
-    static final double MAX_STRAFE_POWER = 0.4;
-    static final double MIN_STRAFE_POWER = 0.5;
+    static final double STRAFE_ACCELERATION = 0.1; // Inches per second squared
+    static final double ROTATE_ACCELERATION = 0.1; // Radians per second squared
+    static final double SPEED_FACTOR = 0.7; // Speed of robot when all motors are set to full power
+    // TODO: empirically measure speed factor
+    static final double ROTATION_RADIUS = 1.0; //Radius of the robot's rotation
+    // TODO: empirically measure and calculate rotation radius
+    static final double STRAFE_RAMP_DISTANCE = 4;  // Inches
+    static final double ROTATION_RAMP_DISTANCE = Math.PI / 2;  // Radians
+    static final double MIN_STRAFE_POWER = 0.3;
+    static final double MAX_STRAFE_POWER = 0.5;
     static final double STRAFE_CORRECTION_POWER = 0.3;
-    static final double MAX_ROTATION_POWER = 0.5;
-    static final double MIN_ROTATION_POWER = 0.4;
-    static final double ROTATION_CORRECTION_POWER = 0.2;
+    static final double STRAFE_SLOW = 0.1;
+    static final double MAX_ROTATION_POWER = 0.3;
+    static final double MIN_ROTATION_POWER = 0.04;
+    static final double ROTATION_CORRECTION_POWER = 0.04;
     // Accepted amounts of deviation between the robot's desired position and actual position.
-    static final double EPSILON_LOC = 1.4;
-    static final double EPSILON_ANGLE = 0.19;
+//    static final double EPSILON_LOC = 1;
+    static final double EPSILON_LOC = 10;
+
+//    static final double EPSILON_ANGLE = 0.35;
+    static final double EPSILON_ANGLE = 0.35;
     // The number of frames to wait after a rotate or travelLinear call in order to check for movement from momentum.
-    static final int NUM_CHECK_FRAMES = 10;
+    static final int NUM_CHECK_FRAMES = 5;
 
     // Distance between starting locations on the warehouse side and the carousel side.
     static final double DISTANCE_BETWEEN_START_POINTS = 35.25;
-    static final double RED_BARCODE_OFFSET = 0;
+
 
     // Distances between where the robot extends/retracts the linear slides and where it opens the claw.
     static final double HORSESHOE_SIZE = 8.9;
+
+    static final double ROTATION_TIME = 1050;
 
     static final double FLOAT_EPSILON = 0.001;
 
@@ -47,6 +60,8 @@ public class Navigation {
     // ================
     static final double MOVEMENT_MAX_POWER = 1;
     static final double ROTATION_POWER = 0.5;
+    static final double REDUCED_ROTATION_POWER = 0.2;
+
     static final double SLOW_MOVEMENT_SCALE_FACTOR = 0.3;
     static final double MEDIUM_MOVEMENT_SCALE_FACTOR = 0.6;
 
@@ -54,8 +69,11 @@ public class Navigation {
     // ===================
 
     // Speeds relative to one another. RR is positive on purpose!
-    //                              RL   RR   FL   FR
-    public double[] wheel_speeds = {-1.0, 1.0, -0.97, -1.0};
+//                                  RL   RR   FL   FR
+    // 0.935*0.96 = 0.9024
+    public double[] wheel_speeds = {0.95, 1, -1, -0.97}; //BL, BR, FL, FR Temporary Note: currently FR from -0.90 to -0.92
+//    public double[] wheel_speeds = {0.3, 0.3, -0.3, -0.3};
+
     public double strafePower;  // Tele-Op only
 
     // First position in this ArrayList is the first position that robot is planning to go to.
@@ -70,44 +88,60 @@ public class Navigation {
         this.path = path;
         this.movementMode = movementMode;
         pathIndex = 0;
-        transformPath(allianceColor, startingSide);
-
+    }
+    public void configurePath(RobotManager.StartingSide startingSide, RobotManager.ParkingPosition parking_position) {
+        transformPath(startingSide);
         //Set parking location
-        setParkingLocation(startingSide);
+        setParkingLocation(startingSide, parking_position);
+
     }
 
     /** Makes the robot travel along the path until it reaches a POI.
      */
-    public Position travelToNextPOI(Robot robot) {
-        while (true) {
-            if (path.size() <= pathIndex) {
-                robot.telemetry.addData("Path size <= to path index, end of travel. pathIndex:", pathIndex);
-                return null;
-            }
-            Position target = path.get(pathIndex);
-            robot.positionManager.updatePosition(robot);
-            robot.telemetry.addData("Going to", target.getX() + ", " + target.getY());
-            robot.telemetry.update();
-            switch (movementMode) {
-                case FORWARD_ONLY:
-                    rotate(getAngleBetween(robot.getPosition().x, robot.getPosition().y, target.x, target.y) - Math.PI / 2,
-                            target.rotatePower, robot);
-                    travelLinear(target, target.getStrafePower(), robot);
-                    rotate(target.getRotation(), target.getRotatePower(), robot);
-                    break;
-                case STRAFE:
-                    travelLinear(target, target.strafePower, robot);
-                    rotate(target.getRotation(), target.rotatePower, robot);
-                    break;
-            }
-
-            pathIndex++;
-
-            robot.telemetry.addData("Got to", target.name);
-            robot.telemetry.update();
-
-            if (target.name.startsWith("POI")) break;
+    public Position travelToNextPOI(RobotManager robotManager, Robot robot) {
+//        while (true) {
+        if (path.size() <= pathIndex) {
+            robot.telemetry.addData("Path size <= to path index, end of travel. pathIndex:", pathIndex);
+            return null;
         }
+        Position target = path.get(pathIndex);
+        robot.positionManager.updatePosition(robot);
+        robot.telemetry.addData("Going to", target.getX() + ", " + target.getY());
+        robot.telemetry.addData("name", target.getName());
+//        robot.telemetry.update();
+        switch (movementMode) {
+            case FORWARD_ONLY:
+                rotate(getAngleBetween(robot.getPosition(), target) - Math.PI / 2,
+                        target.rotatePower, robot);
+                travelLinear(target, target.getStrafePower(), robot);
+                rotate(target.getRotation(), target.getRotatePower(), robot);
+                break;
+            case STRAFE:
+                travelLinear(target, target.strafePower, robot);
+                double difference;
+//                rotate(target.getRotation().ge, target.rotatePower, robot);
+                if (pathIndex > 0) {
+                    difference = target.getRotation()-path.get(pathIndex-1).getRotation();
+                }
+                else {
+                    difference = target.getRotation();
+                }
+                robot.telemetry.addData("difference:", difference);
+                robot.telemetry.addData("target:", target.getRotation());
+                robot.telemetry.update();
+
+//                difference = target.getRotation()-ro  bot.getPosition().getRotation();
+                deadReckoningRotation(robotManager, robot, difference, target.rotatePower);
+                break;
+        }
+
+        pathIndex++;
+
+        robot.telemetry.addData("Got to", target.name);
+//        robot.telemetry.update();
+
+//            if (target.name.startsWith("POI")) break;
+//        }
         return path.get(pathIndex - 1);
     }
 
@@ -147,23 +181,23 @@ public class Navigation {
         double direction;
         if(forward || backward) {
             if (left) {//move NW
-                direction = Math.PI * 0.75;
+                direction = -Math.PI * 0.25;
             }
             else if (right) {//move NE
-                direction = Math.PI * 0.25;
+                direction = -Math.PI * 0.75;
             }
             else {//move just forward
-                direction = Math.PI * 0.5;
+                direction = -Math.PI * 0.5;
             }
             if (backward) {
                 direction *= -1;
             }
         }
         else if (left) {
-            direction = Math.PI;
+            direction = 0;
         }
         else if (right) {
-            direction = 0.0;
+            direction = Math.PI;
         }
         else {
             return false;
@@ -174,52 +208,65 @@ public class Navigation {
 
     /** Changes drivetrain motor inputs based off the controller inputs.
      */
-    public void maneuver(AnalogValues analogValues, Robot robot) {
+    public void maneuver(GamepadWrapper gamepads, AnalogValues analogValues, Robot robot) {
         // Uses left stick to go forward, and right stick to turn.
         // NOTE: right-side drivetrain motor inputs don't have to be negated because their directions will be reversed
         //       upon initialization.
 
-        double turn = -analogValues.gamepad1RightStickX;
+        double turn = analogValues.gamepad1RightStickX;
+        double rotation_power = ROTATION_POWER;
         if (Math.abs(turn) < RobotManager.JOYSTICK_DEAD_ZONE_SIZE) {
             turn = 0;
         }
-
+        if (gamepads.getButtonState(GamepadWrapper.DriverAction.REDUCED_CLOCKWISE)) {
+            rotation_power = REDUCED_ROTATION_POWER;
+            turn = -1;
+        }
+        if (gamepads.getButtonState(GamepadWrapper.DriverAction.REDUCED_COUNTER_CLOCKWISE)) {
+            rotation_power = REDUCED_ROTATION_POWER;
+            turn = 1;
+        }
         double moveDirection = Math.atan2(analogValues.gamepad1LeftStickY, analogValues.gamepad1LeftStickX);
         if (Math.abs(moveDirection) < Math.PI / 12) {
-            moveDirection = 0.0;
-        }
-        else if (Math.abs(moveDirection - Math.PI / 2) < Math.PI / 12) {
-            moveDirection = Math.PI / 2;
-        }
-        else if (Math.abs(moveDirection - Math.PI) % Math.PI < Math.PI / 12) {
             moveDirection = Math.PI;
         }
-        else if (Math.abs(moveDirection + Math.PI / 2) < Math.PI / 12) {
+        else if (Math.abs(moveDirection - Math.PI / 2) < Math.PI / 12) {
             moveDirection = -Math.PI / 2;
+        }
+        else if (Math.abs(moveDirection - Math.PI) % Math.PI < Math.PI / 12) {
+            moveDirection = 0;
+        }
+        else if (Math.abs(moveDirection + Math.PI / 2) < Math.PI / 12) {
+            moveDirection = Math.PI / 2;
+        }
+        else {
+            moveDirection = -moveDirection;
         }
 
         // Field-centric navigation
 //        moveDirection -= robot.positionManager.position.getRotation();
 
-        setDriveMotorPowers(moveDirection, strafePower, turn * ROTATION_POWER, robot, false);
+        setDriveMotorPowers(moveDirection, strafePower, turn * rotation_power, robot, false);
     }
 
     /** Rotates the robot a number of degrees.
      *
-     * @param target The orientation the robot should assume once this method exits.
+     *  @param target The orientation the robot should assume once this method exits.
      *               Within the interval (-pi, pi].
-     * @param constantPower A hard-coded power value for the method to use instead of ramping. Ignored if set to zero.
+     *  @param constantPower A hard-coded power value for the method to use instead of ramping. Ignored if set to zero.
      */
     public void rotate(double target, double constantPower, Robot robot) {
         robot.positionManager.updatePosition(robot);
         // Both values are restricted to interval (-pi, pi].
         final double startOrientation = robot.getPosition().getRotation();
         double currentOrientation = startOrientation;  // Copies by value because double is primitive.
+        double startingTime = robot.elapsedTime.milliseconds();
 
         double rotationSize = getRotationSize(startOrientation, target);
+        double halfRotateTime = getHalfRotateTime(rotationSize);
 
         double power;
-        boolean ramping = true;
+        boolean ramping = false;
         if (Math.abs(constantPower - 0) > FLOAT_EPSILON) {
             power = constantPower;
             ramping = false;
@@ -227,33 +274,31 @@ public class Navigation {
         else {
             power = MIN_ROTATION_POWER;
         }
-        double rotationRemaining = getRotationSize(currentOrientation, target);
+
         double rotationProgress = getRotationSize(startOrientation, currentOrientation);
+        double rotationRemaining = getRotationSize(currentOrientation, target);
         boolean finishedRotation = false;
         int numFramesSinceLastFailure = 0;
         boolean checkFrames = false;
+        double timeElapsed = 0;
+        double timeRemaining = 2 * halfRotateTime - timeElapsed;
 
-        while (!finishedRotation) {
+        while (rotationRemaining > EPSILON_ANGLE) {
             robot.telemetry.addData("rot left", rotationRemaining);
             robot.telemetry.addData("current orientation", currentOrientation);
             robot.telemetry.addData("target", target);
-            robot.telemetry.update();
+//            robot.telemetry.update();
 
             if (ramping) {
-                if (rotationProgress < rotationSize / 2) {
-                    // Ramping up.
-                    if (rotationProgress <= ROTATION_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (rotationProgress / ROTATION_RAMP_DISTANCE) * MAX_ROTATION_POWER,
-                                MIN_ROTATION_POWER, MAX_ROTATION_POWER);
-                    }
-                } else {
-                    // Ramping down.
-                    if (rotationRemaining <= ROTATION_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (rotationRemaining / ROTATION_RAMP_DISTANCE) * MAX_ROTATION_POWER,
-                                MIN_ROTATION_POWER, MAX_ROTATION_POWER);
-                    }
+                if (timeElapsed < halfRotateTime) { // Ramping up
+                    power = Range.clip(
+                            (timeElapsed / halfRotateTime) * MAX_ROTATION_POWER,
+                            MIN_ROTATION_POWER, MAX_ROTATION_POWER);
+                }
+                else { // Ramping down
+                    power = Range.clip(
+                            (timeRemaining / halfRotateTime) * MAX_ROTATION_POWER,
+                            MIN_ROTATION_POWER, MAX_ROTATION_POWER);
                 }
             }
 
@@ -273,8 +318,10 @@ public class Navigation {
             robot.positionManager.updatePosition(robot);
             currentOrientation = robot.getPosition().getRotation();
 
-            rotationRemaining = getRotationSize(currentOrientation, target);
             rotationProgress = getRotationSize(startOrientation, currentOrientation);
+            rotationRemaining = getRotationSize(currentOrientation, target);
+            timeElapsed = robot.elapsedTime.milliseconds() - startingTime;
+            timeRemaining = 2 * halfRotateTime - timeElapsed;
 
             if (rotationRemaining > EPSILON_ANGLE) {
                 numFramesSinceLastFailure = 0;
@@ -290,7 +337,18 @@ public class Navigation {
         stopMovement(robot);
     }
 
+    public void deadReckoningRotation(RobotManager robotManager, Robot robot, double time, double power) {
+        setDriveMotorPowers(0.0, 0.0, power, robot, false);
+        robotManager.waitMilliseconds((long) (time*ROTATION_TIME));
+        stopMovement(robot);
+    }
+
+
+
     /** Determines whether the robot has to turn clockwise or counterclockwise to get from theta to target.
+     *
+     *  @param theta the current orientation
+     *  @param target the desired orientation
      */
     private RotationDirection getRotationDirection(double theta, double target) {
         double angleDiff = target - theta;  // Counterclockwise distance to target
@@ -301,6 +359,9 @@ public class Navigation {
     }
 
     /** Calculates the number of radians of rotation required to get from theta to target.
+     *
+     *  @param theta the current orientation
+     *  @param target the desired orientation
      */
     private double getRotationSize(double theta, double target) {
         double rotationSize = Math.abs(target - theta);
@@ -317,13 +378,15 @@ public class Navigation {
      */
     public void travelLinear(Position target, double constantPower, Robot robot) {
         robot.positionManager.updatePosition(robot);
-        final double startX = robot.getPosition().getX();
-        final double startY = robot.getPosition().getY();
+        final Position startPosition = robot.getPosition();
+        Position currentPosition = robot.getPosition();
+        double startingTime = robot.elapsedTime.milliseconds();
 
-        double totalDistance = getEuclideanDistance(startX, startY, target.x, target.y);
+        double totalDistance = getEuclideanDistance(startPosition, target);
+        double halfStrafeTime = getHalfStrafeTime(totalDistance, getAngleBetween(startPosition, target));
 
         double power;
-        boolean ramping = true;
+        boolean ramping = false;
 
         if (Math.abs(constantPower - 0.0) > FLOAT_EPSILON) {
             power = constantPower;
@@ -332,58 +395,65 @@ public class Navigation {
         else {
             power = MIN_STRAFE_POWER;
         }
-        double distanceToTarget;
-        double distanceTraveled;
+
+        double distanceTraveled = getEuclideanDistance(startPosition, currentPosition);
+        double distanceRemaining = getEuclideanDistance(currentPosition, target);
         boolean finishedTravel = false;
         double numFramesSinceLastFailure = 0;
         boolean checkFrames = false;
+        double timeElapsed = 0;
+        double timeRemaining = 2 * halfStrafeTime - timeElapsed;
 
-        while (!finishedTravel) {
+        while (distanceRemaining > EPSILON_LOC) {
 
             robot.positionManager.updatePosition(robot);
-            double currentX = robot.getPosition().getX();
-            double currentY = robot.getPosition().getY();
-
-            distanceToTarget = getEuclideanDistance(currentX, currentY, target.x, target.y);
-            distanceTraveled = getEuclideanDistance(startX, startY, currentX, currentY);
 
             if (ramping) {
-                if (distanceTraveled < totalDistance / 2) {
-                    // Ramping up.
-                    if (distanceTraveled <= STRAFE_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (distanceTraveled / STRAFE_RAMP_DISTANCE) * MAX_STRAFE_POWER,
-                                MIN_STRAFE_POWER, MAX_STRAFE_POWER);
-                    }
-                } else {
-                    // Ramping down.
-                    if (distanceToTarget <= STRAFE_RAMP_DISTANCE) {
-                        power = Range.clip(
-                                (distanceToTarget / STRAFE_RAMP_DISTANCE) * MAX_STRAFE_POWER,
-                                MIN_STRAFE_POWER, MAX_STRAFE_POWER);
-                    }
+                if (timeElapsed < halfStrafeTime) { // Ramping up
+                    power = Range.clip(
+                            (timeElapsed / halfStrafeTime) * MAX_STRAFE_POWER,
+                            MIN_STRAFE_POWER, MAX_STRAFE_POWER);
+                }
+                else { // Ramping down
+                    power = Range.clip(
+                            (timeRemaining / halfStrafeTime) * MAX_STRAFE_POWER,
+                            MIN_STRAFE_POWER, MAX_STRAFE_POWER);
                 }
             }
 
             if (checkFrames) {
                 power = STRAFE_CORRECTION_POWER;
             }
+            if (distanceRemaining < 15) {
+                power = STRAFE_SLOW;
+            }
 
             double strafeAngle = getStrafeAngle(robot.getPosition(), target);
+            robot.telemetry.addData("starting rotation", robot.getPosition().getRotation());
+            robot.telemetry.addData("used strafe angle", strafeAngle);
 
             setDriveMotorPowers(strafeAngle, power, 0.0, robot, false);
 
-            robot.telemetry.addData("Start X", startX);
-            robot.telemetry.addData("Start Y", startY);
-            robot.telemetry.addData("Current X", currentX);
-            robot.telemetry.addData("Current Y", currentY);
+            robot.positionManager.updatePosition(robot);
+            currentPosition = robot.getPosition();
+            distanceTraveled = getEuclideanDistance(startPosition, currentPosition);
+            distanceRemaining = getEuclideanDistance(currentPosition, target);
+            timeElapsed = robot.elapsedTime.milliseconds() - startingTime;
+            timeRemaining = 2 * halfStrafeTime - timeElapsed;
+
+            robot.telemetry.addData("Start X", startPosition.getX());
+            robot.telemetry.addData("Start Y", startPosition.getY());
+            robot.telemetry.addData("Current X", currentPosition.getX());
+            robot.telemetry.addData("Current Y", currentPosition.getY());
 
             robot.telemetry.addData("Target X", target.x);
             robot.telemetry.addData("Target Y", target.y);
-            robot.telemetry.addData("Strafe angle", getAngleBetween(currentX,currentY, target.x,target.y));
-            robot.telemetry.update();
+//            robot.telemetry.addData("strafe testing y", (target.y-currentY));
+//            robot.telemetry.addData("strafe testing x", (target.x-currentX));
+            robot.telemetry.addData("getAngleBetween(): ", getAngleBetween(currentPosition, target));
+//            robot.telemetry.update();
 
-            if (distanceToTarget > EPSILON_LOC) {
+            if (distanceRemaining > EPSILON_LOC) {
                 numFramesSinceLastFailure = 0;
             }
             else {
@@ -394,70 +464,142 @@ public class Navigation {
                 }
             }
         }
-
         stopMovement(robot);
     }
 
     /** Calculates the angle at which the robot must strafe in order to get to a target location.
+     *
+     *  @param currentLoc the current position
+     *  @param target the desired position
      */
     private double getStrafeAngle(Position currentLoc, Position target) {
-        double strafeAngle = currentLoc.getRotation() - getAngleBetween(currentLoc.getX(), currentLoc.getY(), target.getX(), target.getY());
+
+        double strafeAngle = getAngleBetween(currentLoc, target) - currentLoc.getRotation();
         if (strafeAngle > Math.PI) {
             strafeAngle -= 2 * Math.PI;
         }
         else if (strafeAngle < -Math.PI) {
             strafeAngle += 2 * Math.PI;
         }
+//        return 0;
         return strafeAngle;
     }
 
-    /** Determines the angle between the horizontal axis and the segment connecting A and B.
+    /** Calculates the speed of the robot when strafing given the direction of strafing and the strafing speed
+     *
+     *  @param strafeAngle the direction (angle) in which the robot should strafe
+     *  @param power the strafing speed of the robot
+     *  @return the speed of the robot
      */
-    private double getAngleBetween(double x1, double y1, double x2, double y2) { return Math.atan2((y2 - y1), (x2 - x1)); }
+    private double getRobotSpeed(double strafeAngle, double power) {
+        double powerSet1 = Math.sin(strafeAngle) + Math.cos(strafeAngle);
+        double powerSet2 = Math.sin(strafeAngle) - Math.cos(strafeAngle);
+        double[] rawPowers = scaleRange(powerSet1, powerSet2);
+
+        if (strafeAngle > -Math.PI/2 && strafeAngle < Math.PI/2) {
+            return (SPEED_FACTOR * power * Math.sqrt(2 * Math.pow(rawPowers[1]/rawPowers[0], 2) + 2)) / 2;
+        }
+        else {
+            return (SPEED_FACTOR * power * Math.sqrt(2 * Math.pow(rawPowers[0]/rawPowers[1], 2) + 2)) / 2;
+        }
+    }
+
+    /** Calculates half the amount of time it is estimated for a linear strafe to take.
+     *
+     *  @param distance the distance of the strafe
+     *  @param strafeAngle the angle of the strafe
+     */
+    private double getHalfStrafeTime(double distance, double strafeAngle) {
+        // Inches per second
+        double min_strafe_speed = getRobotSpeed(strafeAngle, MIN_STRAFE_POWER);
+        double max_strafe_speed = getRobotSpeed(strafeAngle, MAX_STRAFE_POWER);
+
+
+        double ramp_distance = (max_strafe_speed + min_strafe_speed) / 2
+                * (max_strafe_speed - min_strafe_speed) / STRAFE_ACCELERATION;
+        if (distance / 2 >= ramp_distance) {
+            return (distance / 2 - ramp_distance) / max_strafe_speed
+                    + (max_strafe_speed - min_strafe_speed) / STRAFE_ACCELERATION;
+        }
+        else {  // We never get to max_strafe_speed
+            return (-min_strafe_speed + Math.sqrt(Math.pow(min_strafe_speed, 2) + distance * STRAFE_ACCELERATION))
+                    / 0.5 * STRAFE_ACCELERATION;
+        }
+    }
+
+    /** Calculates half the amount of time it is estimated for a rotation to take.
+     *
+     *  @param angle The angle of the rotation
+     */
+    private double getHalfRotateTime(double angle) {
+        // Radians per second
+        double min_rotate_speed = (SPEED_FACTOR * MIN_ROTATION_POWER) / ROTATION_RADIUS;
+        double max_rotate_speed = (SPEED_FACTOR * MAX_ROTATION_POWER) / ROTATION_RADIUS;
+
+
+        double ramp_angle = (max_rotate_speed + min_rotate_speed) / 2
+                * (max_rotate_speed - min_rotate_speed) / ROTATE_ACCELERATION;
+        if (angle / 2 >= ramp_angle) {
+            return (angle / 2 - ramp_angle) / max_rotate_speed
+                    + (max_rotate_speed - min_rotate_speed) / ROTATE_ACCELERATION;
+        }
+        else {  // We never get to max_rotate_speed
+            return (-min_rotate_speed + Math.sqrt(Math.pow(min_rotate_speed, 2) + angle * ROTATE_ACCELERATION))
+                    / 0.5 * ROTATE_ACCELERATION;
+        }
+    }
+
+    /** Determines the angle between the horizontal axis (currently left side of the robot) and the segment connecting A and B.
+     *  Currently being negated so that the tangent values are positive for the robot moving away from the wall
+     *
+     *  @param a the starting position
+     *  @param b the desired position
+     */
+    private double getAngleBetween(Position a, Position b) {
+        return -Math.atan2((b.y - a.y), (b.x - a.x));
+    }
 
     /** Calculates the euclidean distance between two points.
      *
-     *  TODO: make this take two Positions
+     *  @param a the starting position
+     *  @param b the desired position
      */
-    private double getEuclideanDistance(double x1, double y1, double x2, double y2) {
-        return Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
+    private double getEuclideanDistance(Position a, Position b) {
+        return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
     }
 
     /** Transforms the robot's path based on the alliance color and side of the field it is starting on.
      */
-    private void transformPath(RobotManager.AllianceColor allianceColor, RobotManager.StartingSide startingSide) {
+    private void transformPath(RobotManager.StartingSide startingSide) {
         for (int i = 0; i < path.size(); i++) {
             Position pos = path.get(i);
             Position copy = new Position(pos.getX(),pos.getY(), pos.getName(),pos.getAction(),pos.getStrafePower(),pos.getRotatePower(),pos.getRotation());
-            if (allianceColor == RobotManager.AllianceColor.RED) {
-                copy.setY(-copy.getY());
-                copy.setRotation(-copy.getRotation());
-            }
-            else if (startingSide == RobotManager.StartingSide.OUR_COLOR) {
-                copy.setY(-copy.getY());
+//            if (allianceColor == RobotManager.AllianceColor.RED) {
+//                copy.setY(-copy.getY());
+//                copy.setRotation(-copy.getRotation());
+//            }
+            if (startingSide == RobotManager.StartingSide.RIGHT) {
+                copy.setX(-copy.getX());
                 copy.setRotation(-copy.getRotation());
             }
             path.set(i, copy);
         }
     }
 
-    private void setParkingLocation(RobotManager.StartingSide startingSide) {
-        /*
-        //Parks in a terminal or a substation for 2 points
-        //TODO: IMPRORTANT NOTE: this might not work because the positions are not transformed. make sure this will work as intended. might be able to just use one position.
-        switch(startingSide) {
-            case OUR_COLOR:
-                path.add(AutonomousPaths.terminalPositionOurColor); //If we are starting on our color then park in the terminal on our side
-                break;
-            case THEIR_COLOR:
-                path.add(AutonomousPaths.substationPositionTheirColor); //If we are starting on their color then park in the substation
-                break;
-        }
-         */
-        // TODO: ADD CV CODE HERE
+    /**
+     * Adds final parking location as the final position on the path.
+     */
+    private void setParkingLocation(RobotManager.StartingSide startingSide, RobotManager.ParkingPosition parking_position) {
+        // TO DO: Add paths for three different paths
         //Parks in a signal parking spot to have a chance for 20 points
-        path.add(AutonomousPaths.intermediateBottomLeft); //No transformation occurs on this position so it will be the same
-        path.add(AutonomousPaths.signalLocation1);
+        if (parking_position == RobotManager.ParkingPosition.LEFT) {
+            path.add(AutonomousPaths.leftBarcode); //No transformation occurs on this position so it will be the same
+        } else if (parking_position == RobotManager.ParkingPosition.MIDDLE) {
+            path.add(AutonomousPaths.centerBarcode);
+        }
+        else {
+            path.add(AutonomousPaths.rightBarcode);
+        }
     }
 
     /** Sets drive motor powers to make the robot move a certain way.
@@ -474,6 +616,7 @@ public class Navigation {
         }
 
         robot.telemetry.addData("turn %.2f", turn);
+        robot.telemetry.addData("current strafe direction", strafeDirection);
         if (Math.abs(power - 0) < FLOAT_EPSILON && Math.abs(turn - 0) < FLOAT_EPSILON) {
             stopMovement(robot);
             robot.telemetry.addData("stopping","YES");
@@ -519,562 +662,87 @@ public class Navigation {
      * @param b value to be scaled
      * @return an array containing the scaled versions of a and b
      */
-    double[] scaleRange(double a, double b) {
+    public double[] scaleRange(double a, double b) {
         double max = Math.max(Math.abs(a), Math.abs(b));
         return new double[] {a / max, b / max};
     }
 
-    // PATHFINDING
-    // ===========
-
-//    //variables relating to the operations of pathfinding
-//    int hubexclousionRadious=11;
-//    double segmentDist=1;
-//    /**determine if the provided point is inside a hub
-//     *
-//     * @param p the point to checked
-//     * @return boolean, true if the provided point is inside a hub
-//     */
-//    boolean insideHub(Point p){
-//        if(Math.sqrt(Math.pow(p.x-72,2)+Math.pow(p.y-120,2))<=hubexclousionRadious){
-//            return true;
-//        }
-//        if(Math.sqrt(Math.pow(p.x-48,2)+Math.pow(p.y-60,2))<=hubexclousionRadious){
-//            return true;
-//        }
-//        if(Math.sqrt(Math.pow(p.x-96,2)+Math.pow(p.y-60,2))<=hubexclousionRadious){
-//            return true;
-//        }
-//        return false;
-//    }
-//
-//    /**determine if the provided point is inside the horizontal barrier
-//     *
-//     * @param p the point to checked
-//     * @return boolean, true if the provided point is inside the barrier
-//     */
-//    boolean insideBarrierH(Point p){
-//        //13.68 99.5 116.32 5.77
-//        if(p.x>=13.68&&p.x<=13.68+116.32&&p.y>=99.5-5.77&&p.y<=99.5){
-//            return true;
-//        }
-//        return false;
-//    }
-//
-//    /**determines if the provided point is inside the left vertical barrier
-//     *
-//     * @param p the point to checked
-//     * @return boolean, true if the provided point is inside the barrier
-//     */
-//    boolean insideBarrierVL(Point p){
-//        //13.68 99.5 116.32 5.77
-//        if(p.x>=44.6&&p.x<=44.6+5.77&&p.y>=130.2-30.75&&p.y<=130.2){
-//            return true;
-//        }
-//        return false;
-//    }
-//
-//    /**determines if the provided point is inside the right vertical barrier
-//     *
-//     * @param p the point to checked
-//     * @return boolean, true if the provided point is inside the barrier
-//     */
-//    boolean insideBarrierVR(Point p){
-//        //13.68 99.5 116.32 5.77
-//        if(p.x>=93.75&&p.x<=93.75+5.77&&p.y>=130.2-30.75&&p.y<=130.2){
-//            return true;
-//        }
-//        return false;
-//    }
-//
-//    /**generates a path as an array list of points that goes from start to end without running into any obstacles
-//     *it is recommended that you run the output of this function through optimisePath1 and then optimisePath2
-//     * @link https://github.com/jSdCool/FTC-robot-pathfinging for a visual deminstration
-//     * @param start the point to start the path at (usually the robots current position)
-//     * @param end the point to end the path at
-//     * @return an arraylist of points that form a path between the provided point
-//     */
-//    ArrayList<Position> createPath(Position start,Position end){
-//        ArrayList<Position> p=new ArrayList<Position>();
-//        p.add(start);
-//        boolean working=true;
-//        int itteration=0;
-//        double anglein=start.rotation;
-//        while(working){
-//            double angle=Math.atan2((end.location.y-p.get(p.size()-1).location.y),(end.location.x-p.get(p.size()-1).location.x));//find the absolute angle to the next point in a straight line to the end point
-//            Point work;
-//            do{
-//
-//                work =new Point(Math.cos(angle)*segmentDist+p.get(p.size()-1).location.x,Math.sin(angle)*segmentDist+p.get(p.size()-1).location.y,"");//create the next point
-//                angle += 0.01;//add 0.01 radians to the theoretical angle
-//
-//            }while(insideHub(work));//if the created point was inside a hub then calculate the point again with the new agale and check again
-//            if(insideBarrierH(work)){//if the  calculated point is inside the horizontal barrier
-//                ArrayList<Position> temp;//create a temporary array list of points
-//
-//                if(angle>0){//if the robot is heading up ish
-//                    if(work.x>72){//if it is on the right side of the field
-//                        temp=createPath(p.get(p.size()-1).setRotation(Math.PI),new Position(new Point(137,92,""),Math.PI));//crate a path that goes to a predefined point at the side of the barrier
-//                    }else{
-//                        temp=createPath(p.get(p.size()-1).setRotation(0),new Position(new Point(6,92,""),0));//crate a path that goes to a predefined point at the side of the barrier
-//                    }
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge generated path into the current working path
-//                    }
-//                    if(work.x>72){//if it is on the right side of the field
-//                        temp=createPath(p.get(p.size()-1).setRotation(Math.PI),new Position(new Point(137,104,""),Math.PI));//make a path going past the barrier
-//                    }else{
-//                        temp=createPath(p.get(p.size()-1).setRotation(0),new Position(new Point(6,104,""),0));//make a path going past the barrier
-//                    }
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge path into main path
-//                    }
-//                }else{//if the robot is heading down ish
-//                    if(work.x>72){//if it is on the right
-//                        temp=createPath(p.get(p.size()-1).setRotation(Math.PI),new Position(new Point(137,104,""),Math.PI));//crate a path that goes to a predefined point at the side of the barrier
-//                    }else{
-//                        temp=createPath(p.get(p.size()-1).setRotation(0),new Position(new Point(6,104,""),0));//crate a path that goes to a predefined point at the side of the barrier
-//                    }
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                    if(work.x>72){//if on the right side of the field
-//                        temp=createPath(p.get(p.size()-1).setRotation(Math.PI),new Position(new Point(137,92,""),Math.PI));//make a path going past the barrier
-//                    }else{
-//                        temp=createPath(p.get(p.size()-1).setRotation(0),new Position(new Point(6,92,""),0));//make a path going past the barrier
-//                    }
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                }
-//            }else if (insideBarrierVL(work)){//path around the left vertical barrier
-//                ArrayList<Position> temp;
-//                if(angle<Math.PI/2&&angle>-Math.PI/2){//if it is heading right
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(42,137,""),-Math.PI/2));//crate a path that goes to a predefined point at the side of the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(54,137,""),-Math.PI/2));//make a path going past the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                }else{//if the robot in heading left
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(54,137,""),-Math.PI/2));//crate a path that goes to a predefined point at the side of the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(42,137,""),-Math.PI/2));//make a path going past the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                }
-//
-//            }else if (insideBarrierVR(work)){//path around the right vertical barrier
-//                ArrayList<Position> temp;
-//                if(angle>Math.PI/2||angle<-Math.PI/2){//if the robot is heading left
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(101,137,""),-Math.PI/2));//crate a path that goes to a predefined point at the side of the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(91,137,""),-Math.PI/2));//make a path going past the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                }else{
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(91,137,""),-Math.PI/2));//crate a path that goes to a predefined point at the side of the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                    temp=createPath(p.get(p.size()-1).setRotation(-Math.PI/2),new Position(new Point(101,137,""),-Math.PI/2));//make a path going past the barrier
-//                    for(int i=0;i<temp.size();i++){
-//                        p.add(temp.get(i));//merge the temporary path into the main path
-//                    }
-//                }
-//            }else{
-//                p.add(new Position(work,anglein));//add the current working point to the path
-//            }
-//            if(Math.sqrt(Math.pow(end.location.x-p.get(p.size()-1).location.x,2)+Math.pow(end.location.y-p.get(p.size()-1).location.y,2))<segmentDist)//if the point is less than the distance of the segments from the end point
-//                working=false;//tell the loop to stop
-//
-//
-//            itteration++;//increase the iteration
-//            if(itteration>1000){//if the program is stuck in an infinite loop(too many iterations)
-//                return null;
-//            }
-//        }
-//        p.add(end);//add the final point to the path
-//        return p;
-//    }
-//
-//    /**the first step in optimising a path, this function reduces the numbers of point in a path by detecting straight lines and removing the points that make them up
-//     @param p the path that you want to optimise
-//     @return a path that contains fewer points
-//     */
-//    ArrayList<Position> optimisePath1(ArrayList<Position> p){
-//        ArrayList<Position> o=new ArrayList<Position>();//the object to return
-//        o.add(p.get(0));//add the first point of the path to the new path
-//        int beginindex=0;
-//        double devation=0.01;//how far(in radians) is a line allowed to lean in either direction before it is consisted a new line
-//        double angle=Math.atan2(p.get(1).location.y-p.get(0).location.y,p.get(1).location.x-p.get(0).location.x);//calculate the initial angle that the line is going in
-//        for(int i=1;i<p.size();i++){
-//            double newAngle=Math.atan2(p.get(i).location.y-p.get(beginindex).location.y,p.get(i).location.x-p.get(beginindex).location.x);//calculate the angle between the base point of the current line and the next point in the list
-//            if(newAngle>=angle-devation&&newAngle<=angle+devation){//if the angle is inside the acceptable range
-//                continue;
-//            }else{
-//                o.add(p.get(i-1));//add the previous point to the optimised path
-//                beginindex=i;//set the current point as the new base point
-//                angle=Math.atan2(p.get(i).location.y-p.get(i-1).location.y,p.get(i).location.x-p.get(i-1).location.x);//calculate the new angle of the next line
-//            }
-//        }
-//        o.add(p.get(p.size()-1));//add the  final point to the new path
-//        return o;
-//    }
-//
-//    /**the second step in optimizing paths this function generates paths between point in a given path to see if it can find a shorter path between them
-//     @param path the path that you want to optimise that has been run through optimisePath1
-//     @return a path that has a shorter overall travel
-//     */
-//    ArrayList<Position> optimisePath2(ArrayList<Position> path){
-//        ArrayList<Position> p=new ArrayList(path);//copy the input path
-//
-//        if(p.size()==2){//if the path only consists of 2 points then the path can not be optimised so do nothing
-//            return p;
-//        }
-//
-//        ArrayList<Position> o=new ArrayList<Position>();//the object to return
-//
-//        for(int i=0;i<p.size()-1;){//seek through the path
-//            int curbest=i+1,sigbest=-1;
-//            for(int j=i+1;j<p.size();j++){//check every point in the path ahead of this point
-//                double l1,l2;
-//                ArrayList<Position> temp=new ArrayList<Position>(),temp2;//create temporary paths
-//                for(int n=i;n<=j;n++){//make the temp path the section of the main path between the 2 points
-//                    temp.add(p.get(n));
-//                }
-//                temp2=optimisePath1(createPath(p.get(i),p.get(j)));//generate a new path directly between the 2 selected points
-//                l1=pathlength(temp2);
-//                l2=pathlength(temp);
-//                if(l1<l2){//compare the lengths of the paths, if the new path is less than the original
-//                    curbest=j;//set the current best index to j
-//                    if(sigbest==-1){//if the best significant is -1 then set it to the current best
-//                        sigbest=curbest;
-//                    }
-//                }
-//
-//                if(l1<=l2*0.7){//if this path is significantly shorter than the old best then set sigbest to this path      this value may need to be tweaked
-//                    sigbest=j;
-//                }
-//
-//            }//end of loop
-//            if(sigbest==-1){//if the best significant is -1 then set it to the current best
-//                sigbest=curbest;
-//            }
-//            ArrayList<Position> temp=new ArrayList<Position>();//create a temp path
-//            temp=optimisePath1(createPath(p.get(i),p.get(sigbest)));//set the temp path to the new best path
-//            for(int j=0;j<temp.size();j++){
-//                o.add(temp.get(j));//add the new best path to the output
-//            }
-//            i=sigbest;
-//        }
-//
-//        return o;
-//    }
-//
-//    /**gets the total travel distance of a path
-//    @param p the path you want the length of
-//    @return the length of the path
-//    */
-//    double pathlength(ArrayList<Position> p){
-//        double length=0;
-//        for(int i=0;i<p.size()-1;i++){
-//            length+=Math.sqrt(Math.pow(p.get(i+1).location.y-p.get(i).location.y,2)+Math.pow(p.get(i+1).location.x-p.get(i).location.x,2));
-//        }
-//        return length;
-//    }
-}
-
-
 /** Hardcoded paths through the playing field during the Autonomous period.
  */
-/*
-class AutonomousPaths {
-    // Coordinates relative to starting location close to carousel.
-//    public static final Position allianceShippingHub =
-//            new Position(new Point(11, 20, "POI shipping hub",
-//                    Point.Action.PRELOAD_BOX, 0, 0), -Math.PI / 2);
-//    public static final Position allianceStorageUnit =
-//            new Position(new Point(19, -18, "POI alliance storage unit"), 0);
-//    public static final Position carousel =
-//            new Position(new Point(4, -13.5, "POI carousel", Point.Action.CAROUSEL,
-//                    Navigation.STRAFE_CORRECTION_POWER, Navigation.ROTATION_CORRECTION_POWER), -Math.PI / 6);
-//    public static final Position warehouse =
-//            new Position(new Point(10, 50, "POI warehouse"), 0);
-//
-//    public static final Position out_from_carousel =
-//            new Position(new Point(
-//                    carousel.getX() + 2, carousel.getY() + 3, "out from carousel"), -Math.PI / 6);
-//                    //                   6,                      -11,
-//
-//
-//    public static final Position backed_up_from_ASH =
-//            new Position(new Point(
-//                    allianceShippingHub.getX() - 5, allianceShippingHub.getY(),
-//                    "backed up from shipping hub"), -Math.PI / 2);
-//    public static final Position lined_up_with_ASU =
-//            new Position(new Point(
-//                    allianceShippingHub.getX() - 5, allianceStorageUnit.getY(),
-//                    "lined up with storage unit"), -Math.PI / 2);
-//    public static final Position warehouse_entrance =
-//            new Position(new Point(-3, warehouse.getY() - 11, "warehouse entrance"), 0);
-//    public static final Position inside_warehouse =
-//            new Position(new Point(-6, warehouse.getY(), "inside warehouse", Point.Action.RAISE_SLIDE_L1,
-//                    Navigation.STRAFE_CORRECTION_POWER, 0.0), 0);
-//
-//    public static final ArrayList<Position> PARK_ASU = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(10, allianceStorageUnit.getY(), "near storage unit"), 0),
-//            allianceStorageUnit
-//    ));
-//    public static final ArrayList<Position> PRELOAD_BOX = new ArrayList<>(Arrays.asList(
-//            allianceShippingHub
-//    ));
-//    public static final ArrayList<Position> CAROUSEL = new ArrayList<>(Arrays.asList(
-//            out_from_carousel,
-//            carousel
-//    ));
-//    public static final ArrayList<Position> PRELOAD_BOX_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-//            allianceShippingHub,
-//            backed_up_from_ASH,
-//            lined_up_with_ASU,
-//            allianceStorageUnit
-//    ));
-//    public static final ArrayList<Position> CAROUSEL_AND_PRELOAD_BOX = new ArrayList<>(Arrays.asList(
-//            out_from_carousel,
-//            carousel,
-//            allianceShippingHub
-//    ));
-//    public static final ArrayList<Position> PRELOAD_BOX_AND_CAROUSEL = new ArrayList<>(Arrays.asList(
-//            allianceShippingHub,
-//            out_from_carousel,
-//            carousel
-//    ));
-//    public static final ArrayList<Position> CAROUSEL_PRELOAD_BOX_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-//            out_from_carousel,
-//            carousel,
-//            allianceShippingHub,
-//            backed_up_from_ASH,
-//            lined_up_with_ASU,
-//            allianceStorageUnit
-//    ));
-//    public static final ArrayList<Position> PRELOAD_BOX_CAROUSEL_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-//            allianceShippingHub,
-//            out_from_carousel,
-//            carousel,
-//            allianceStorageUnit
-//    ));
-//    public static final ArrayList<Position> CAROUSEL_AND_PARK_ASU = new ArrayList<>(Arrays.asList(
-//            out_from_carousel,
-//            carousel,
-//            allianceStorageUnit
-//    ));
-//    public static final ArrayList<Position> PARK_WAREHOUSE = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(6, warehouse_entrance.getY() - 11, "out from start wall"), -Math.PI / 2),
-//            warehouse_entrance,
-//            inside_warehouse,
-//            warehouse
-//    ));
-//    public static final ArrayList<Position> PRELOAD_BOX_AND_PARK_WAREHOUSE = new ArrayList<>(Arrays.asList(
-//            allianceShippingHub,
-//            new Position(new Point(backed_up_from_ASH.getX(), backed_up_from_ASH.getY(), "backed up from ASH"), 0),
-//            warehouse_entrance,
-//            inside_warehouse,
-//            warehouse
-//    ));
-//    public static final ArrayList<Position> CAROUSEL_AND_PARK_WAREHOUSE = new ArrayList<>(Arrays.asList(
-//            out_from_carousel,
-//            carousel,
-//            warehouse_entrance,
-//            inside_warehouse,
-//            warehouse
-//    ));
-
-
-    // TESTING PATHS
-    // =============
-
-    // NOTE:
-    // - These currently only incorporate strafing at intervals of pi/2, moving forward/backward whenever possible.
-    // - These assume both orientation and location to be relative to the robot's starting position.
-//    public static final ArrayList<Position> PRELOAD_BOX_ONLY = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(6, 0, "Out from wall"), 0),
-//            new Position(new Point(6, 25, "In line with shipping hub"), 0),
-//            new Position(new Point(13, 25, "Location Shipping hub"), 0),
-//            new Position(new Point(13, 25, "POI shipping hub"), -Math.PI / 2)
-//    ));
-//    public static final ArrayList<Position> PRELOAD_BOX_AND_PARK = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(10, 0, "Out from wall"), 0),
-//            new Position(new Point(10, 10, "In line with shipping hub"), 0),
-//            new Position(new Point(10, 10, "Facing shipping hub"), -Math.PI / 2),
-//            new Position(new Point(20, 10, "POI Shipping hub"), -Math.PI / 2),
-//            new Position(new Point(15, 10, "Backed up from shipping hub"), -Math.PI / 2),
-//            new Position(new Point(15, 10, "Facing storage unit"), Math.PI),
-//            new Position(new Point(15, -20, "Partially in storage unit"), Math.PI),
-//            new Position(new Point(25, -20, "POI storage unit"), Math.PI)
-//    ));
-//    public static final ArrayList<Position> PARK_STORAGE_UNIT = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(0, 10, "Out from wall1"), 0),
-//            new Position(new Point(29, 10, "Out from wall2"), 0),
-//            new Position(new Point(29, 25, "POI storage unit"), 0)
-//    ));
-//    public static final ArrayList<Position> MOVE_STRAIGHT = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(0, 20, "P1"), 0)
-//    ));
-//    public static final ArrayList<Position> ROTATE_180 = new ArrayList<>(Arrays.asList(
-//            new Position(new Point(0, 0, "P1"), Math.PI)
-//    ));
-}
-*/
-
-class AutonomousPaths {
-    public static final double TILE_SIZE = 23.5625;
+public static class AutonomousPaths {
+//    public static final double TILE_SIZE = 23.5625;
+    public static final double TILE_SIZE = 24;
+    // These two constants aren't used but store the offsets from the center of the tile to the real starting position
+    public static final double Y_OFFSET = -0.25;
+    public static final double X_OFFSET = -0.15;
 
     public static final double FIELD_WIDTH = 6;//placeholder - field is 6 x 6 square
 
     //Units are in field tiles.
 
-    //origin is the staring position of the robot
-    //public Position startingPosition = new Position(0,0,0,"startingPosition");
-
-    //Angle of zero for robot has intake facing towards from our alliance's side
-    //Intake on robot is pointed forward
-    //Camera is pointing to the back of the robot
-    //Current assumption is that negative angle turns robot clockwise
-
-    //TODO: all of these positions should be made final and replaced with proper naming conventions
-    //Terminal & Substation (these are added without transformation)
-    public static Position terminalPositionOurColor = new Position(0,-1 * TILE_SIZE, -Math.PI / 2,"terminalPositionOurColor"); //-Math.PI / 2 is the rotation that the robot will probably have by the end of the path
-    public static Position substationPositionOurColor = new Position(0,1.5 * TILE_SIZE,-Math.PI / 2,"substationPositionOurColor");
-    public static Position substationPositionTheirColor = new Position(0,-1.5 * TILE_SIZE,Math.PI / 2,"substationPositionTheirColor");
-
+    //Positions
 
     //Junctions
-    //Ground
-    //public static Position closeLeftGroundJunction = new Position(-1, 0, "closeLeftGroundJunction", Navigation.Action.DROP_CONE, 1, 1, -Math.PI / 4);
-    //public static Position closeRightGroundJunction = new Position(0, 0, "closeRightGroundJunction", Navigation.Action.DROP_CONE, 1, 1, -3 / 4 * Math.PI);
+    public static Position nearHighJunction = new Position(0.85 * TILE_SIZE, -1.70*TILE_SIZE, "POI nearHighJunction", Action.NONE, 0.5, 0.3, 0);
+//    public static Position nearHighJunction = new Position(1 * TILE_SIZE, -1.5*TILE_SIZE, "POI nearHighJunction", Action.NONE, 1, 1, -9* Math.PI / 20);
+    public static Position nearInHighJunction = new Position(0.7 * TILE_SIZE, -1.70*TILE_SIZE, "POI nearInHighJunction", Action.DELIVER_CONE_HIGH_180, 0.5, 0.3, -Math.PI/2);
+    public static Position farHighJunction = new Position(-0.15*TILE_SIZE,
+            -2.75 * TILE_SIZE, "POI farHighJunction", Action.DELIVER_CONE_HIGH_180, 0.5, 0.3, -Math.PI/2);
+//    public static Position farHighJunction = new Position(0,
+//            -2.75 * TILE_SIZE, "POI farHighJunction", Action.NONE, 1, 1, -9*Math.PI / 20);
+    public static Position farInHighJunction = new Position(-0.05*TILE_SIZE,
+        -2.75 * TILE_SIZE, "POI farInHighJunction", Action.DELIVER_CONE_HIGH_180, 0.5, 0.3, -Math.PI/2);
+    public static Position mediumJunction = new Position(-0.15*TILE_SIZE, -1.75*TILE_SIZE, "POI mediumJunction", Action.DELIVER_CONE_MEDIUM, 0.5, 0.3, 0);
+    public static Position nearLowJunction = new Position(0.35*TILE_SIZE, -0.25, "POI nearLowJunction", Action.DELIVER_CONE_LOW, 0.5, 0.3, 0);
+    public static Position farLowJunction = new Position(-0.65*TILE_SIZE, -1.25*TILE_SIZE, "POI farLowJunction", Action.DELIVER_CONE_LOW, 0.5, 0.3, 0);
 
-    /*
-    //Small
-    public static Position leftSmallJunction = new Position(0.5 * TILE_SIZE, 0, "POI leftSmallJunction", Navigation.Action.DELIVER_CONE_LOW, 1, 1, -Math.PI / 2); //may be problem because of cone
-    public static Position rightSmallJunction = new Position(1.5 * TILE_SIZE, -1 * TILE_SIZE, "POI rightSmallJunction", Navigation.Action.DELIVER_CONE_LOW, 1, 1, -Math.PI / 2); //might be problem because of cone stack
+    //Cone Stack
+    public static Position coneStack1 = new Position(-1.08 * TILE_SIZE, -2.25 * TILE_SIZE, "POI coneStackFirstCone", Action.PICK_UP_FIRST_STACK_CONE, 0.5, 0.3, -Math.PI/2);
+//    public static Position coneStack1 = new Position(-0.5 * TILE_SIZE, -2 * TILE_SIZE, "POI coneStackFirstCone", Action.NONE, 1, 1, -Math.PI/2);
+    public static Position coneStack2 = new Position(-1.08 * TILE_SIZE, -2.25 * TILE_SIZE, "POI coneStackSecondCone", Action.PICK_UP_SECOND_STACK_CONE, 0.5, 0.3, -Math.PI/2);
 
-    //Medium
-    public static Position mediumJunction = new Position(1.5 * TILE_SIZE, 0, "POI mediumJunction", Navigation.Action.DELIVER_CONE_MEDIUM, 1, 1, -Math.PI / 2);
+    //Intermediate Locations. Since these values could be transformed, inner refers to the middle of the entire field, center
+    // to the center of the left or right, and outer refers to the very edges of the field next to either side wall
+    // Back refers to the tiles closest to the wall, front refers to the tiles furthest away from the wall/drivers
+    public static Position intermediateInnerBack = new Position(0.85*TILE_SIZE, -0.25*TILE_SIZE, 0, "intermediateInnerBack");
+    public static Position intermediateCenterBack = new Position(-0.15*TILE_SIZE, -0.25*TILE_SIZE, 0, "intermediateCenterBack");
+    public static Position intermediateOuterBack = new Position(-1.15*TILE_SIZE, -0.25*TILE_SIZE, 0, "intermediateOuterBack");
+    public static Position intermediateInnerMiddle = new Position(0.85*TILE_SIZE, -1.25*TILE_SIZE, 0, "intermediateInnerMiddle");
+    public static Position intermediateCenterMiddle = new Position(-0.15*TILE_SIZE, -1.25*TILE_SIZE, 0, "intermediateCenterMiddle");
+    public static Position intermediateOuterMiddle = new Position(-1.15*TILE_SIZE, -1.25*TILE_SIZE, 0, "intermediateOuterMiddle");
+    public static Position intermediateInnerFront = new Position(0.85*TILE_SIZE, -2.25*TILE_SIZE, -Math.PI/2, "intermediateInnerFront");
+    public static Position intermediateCenterFront = new Position(-0.15*TILE_SIZE, -2.25*TILE_SIZE, -Math.PI/2, "intermediateCenterFront");
+    public static Position intermediateOuterFront = new Position(-1.15*TILE_SIZE,-2.25*TILE_SIZE, 0, "intermediateOuterFront");
 
-    //Large
-    public static Position leftLargeJunction = new Position(1.5 * TILE_SIZE,1 * TILE_SIZE, "POI leftLargeJunction", Navigation.Action.DELIVER_CONE_HIGH, 1, 1, -Math.PI / 2);
-    //public static Position rightLargeJunction = new Position(0,2, "POI rightLargeJunction", Navigation.Action.DELIVER_CONE_HIGH, 1, 1, -Math.PI / 4); //maybe the deliver to pole method should allow for delivering cone from different positions
-    public static Position rightLargeJunction = new Position(2.5 * TILE_SIZE,0, "POI rightLargeJunction", Navigation.Action.DELIVER_CONE_HIGH, 1, 1, -Math.PI / 2); //might be problematic because of intrusion onto opposite alliance's side
-     */
+    //Parking Locations
+    //Make sure NOT to transform these in transformPath()
+    public static Position leftBarcode = new Position(-0.95*TILE_SIZE, -2.25 * TILE_SIZE,  "leftBarcodeParkingPosition", Action.RETRACT_SLIDES, 0.5, 0.3, -Math.PI/2);
+//    public static Position leftBarcode = new Position(-0.9*TILE_SIZE, -2 * TILE_SIZE,  "leftBarcodeParkingPosition", Action.NONE, 1, 1, -Math.PI / 2);
+    public static Position centerBarcode = new Position(-0.15*TILE_SIZE, -2.25 * TILE_SIZE,  "centerBarcodeParkingPosition", Action.RETRACT_SLIDES, 0.5, 0.3, -9* Math.PI / 20);
+//    public static Position centerBarcode = new Position(0, -2 * TILE_SIZE,  "centerBarcodeParkingPosition", Action.NONE, 1, 1, -Math.PI / 2);
+    public static Position rightBarcode = new Position(0.85*TILE_SIZE, -2.25 * TILE_SIZE,  "rightBarcodeParkingPosition", Action.RETRACT_SLIDES, 0.5, 0.3, -9* Math.PI / 20);
+//    public static Position rightBarcode = new Position(TILE_SIZE, -2 * TILE_SIZE,  "rightBarcodeParkingPosition", Action.NONE, 1, 1, -Math.PI / 2);
 
-    //Small
-    public static Position leftSmallJunction = new Position(0.5 * TILE_SIZE, 0, "POI leftSmallJunction", Navigation.Action.DELIVER_CONE_LOW, 1, 1, Math.PI / 2); //may be problem because of cone
-    public static Position rightSmallJunction = new Position(1.5 * TILE_SIZE, -1 * TILE_SIZE, "POI rightSmallJunction", Navigation.Action.DELIVER_CONE_LOW, 1, 1, Math.PI / 2); //might be problem because of cone stack
+    //ZE ULTIMATE PATH - Prepare for trouble! And make it double! To protect the world from devastation!
+    //To unite all peoples within our nation! To denounce the evils of truth and love!
+    public static final ArrayList<Position> CYCLE_HIGH = new ArrayList<>(Arrays.asList(
+//            intermediateInnerBack,
+//            nearHighJunction,
+//            nearInHighJunction,
+//            nearHighJunction,
+            farHighJunction,
+            intermediateCenterFront,
+//            intermediateInnerFront,
+            coneStack1,
+            intermediateCenterFront,
+            farHighJunction,
+//            farInHighJunction,
+//            farHighJunction,
+            intermediateCenterFront));
+//    public static final ArrayList<Position> CYCLE_HIGH = new ArrayList<>(Arrays.asList(
+//            new Position(TILE_SIZE, 0, 0, "sussy test")));
 
-    //Medium
-    public static Position mediumJunction = new Position(1.5 * TILE_SIZE, 0, "POI mediumJunction", Navigation.Action.DELIVER_CONE_MEDIUM, 1, 1, Math.PI / 2);
-
-    //Large
-    public static Position leftLargeJunction = new Position(1.5 * TILE_SIZE,1 * TILE_SIZE, "POI leftLargeJunction", Navigation.Action.DELIVER_CONE_HIGH, 1, 1, Math.PI / 2);
-    //public static Position rightLargeJunction = new Position(0,2, "POI rightLargeJunction", Navigation.Action.DELIVER_CONE_HIGH, 1, 1, -Math.PI / 4); //maybe the deliver to pole method should allow for delivering cone from different positions
-    public static Position rightLargeJunction = new Position(2.5 * TILE_SIZE,0, "POI rightLargeJunction", Navigation.Action.DELIVER_CONE_HIGH, 1, 1, Math.PI / 2); //might be problematic because of intrusion onto opposite alliance's side
-
-    //Signal locations
-    //Cone
-    public static Position signalCone = new Position(1 * TILE_SIZE, 0, "POI signalCone", Navigation.Action.PICK_UP_CONE, 1, 1, -Math.PI / 2); //This might be wrong because the robot might rotate after you get to the desired position
-
-    //IMPORTANT NOTE: signal locations on the right side are not symmetrical with their counterparts on left side
-    //TODO: intermediate positions will need to be created to safely move the robot from its last position to the signal location
-    public static Position signalLocation1 = new Position(1.5 * TILE_SIZE, 1 * TILE_SIZE, 0, "signalLocation1");
-    public static Position signalLocation2 = new Position(0, 1.5 * TILE_SIZE,  0, "signalLocation2");
-    public static Position signalLocation3 = new Position(-1 * TILE_SIZE, 1.5 * TILE_SIZE, 0, "signalLocation3");
-
-
-    //Intermediate positions (positions that you need to go to on the way to your destination)
-    public static Position intermediateBottomLeft = new Position(0, 1 * TILE_SIZE, Math.PI / 2, "intermediateBottomLeft");
-    public static Position intermediateCenterLeft = new Position(1 * TILE_SIZE, 1 * TILE_SIZE, -Math.PI / 2, "intermediateCenterLeft"); //Rotation is there so that signal cone can be picked up on next position in path
-    public static Position intermediateBottomRight = new Position(-1 * TILE_SIZE, 0, Math.PI / 2, "intermediateBottomRight");
-    public static Position intermediateCenterRight = new Position(-1 * TILE_SIZE, 1 * TILE_SIZE, Math.PI / 2, "intermediateCenterRight");
-    public static Position intermediateBottomCenter = new Position(0, 0, Math.PI / 2, "intermediateBottomCenter");
-
-
-    //Paths (parking part of paths will be added on later during run time)
-    //The last position in a path is always a position where the robot can travel directly to the substation or terminal for parking
-//    public static final ArrayList<Position> PARK_ONLY = new ArrayList<>(Arrays.asList());
-//    public static final ArrayList<Position> LARGE_LARGE = new ArrayList<>(Arrays.asList(intermediateBottomLeft, leftLargeJunction, intermediateCenterLeft, signalCone, intermediateCenterLeft, leftLargeJunction, intermediateBottomLeft)); //Puts two cones on the same junction
-//    public static final ArrayList<Position> MEDIUM_LARGE = new ArrayList<>(Arrays.asList(intermediateBottomLeft, leftLargeJunction, intermediateCenterLeft, signalCone, mediumJunction, intermediateBottomCenter));
-//    public static final ArrayList<Position> SMALL_LARGE = new ArrayList<>(Arrays.asList(intermediateBottomRight, rightSmallJunction, intermediateCenterRight, signalCone, intermediateCenterLeft, leftLargeJunction, intermediateBottomLeft));
-//    public static final ArrayList<Position> SMALL_MEDIUM = new ArrayList<>(Arrays.asList(intermediateBottomRight, rightSmallJunction, intermediateCenterRight, signalCone, mediumJunction, intermediateBottomCenter));
-//    public static final ArrayList<Position> SMALL_SMALL = new ArrayList<>(Arrays.asList(intermediateBottomRight, rightSmallJunction, intermediateCenterRight, signalCone, leftSmallJunction, intermediateBottomCenter));
-    //Paths
-    public static final ArrayList<Position> MEDIUM = new ArrayList<>(Arrays.asList(intermediateBottomLeft, mediumJunction, intermediateBottomLeft));
-
-    public static final ArrayList<Position> LARGE = new ArrayList<>(Arrays.asList(intermediateBottomLeft,leftLargeJunction));
-
-    public static final ArrayList<Position> SMALL = new ArrayList<>(Arrays.asList(intermediateBottomRight, rightSmallJunction, intermediateBottomRight));
-
-    public static final ArrayList<Position> PARK_ONLY = new ArrayList<>(Arrays.asList());
-
-    //Location is for parking location retrieved from signal and starting location is for whether the robot started on the left or the right
-    /*
-    public static void setSignalParkingSpot(SignalParking location, RobotManager.StartingSide startingLocation) {
-        switch(location) {
-            case LOCATION1:
-                switch(startingLocation) {
-                    case LEFT:
-                        path.add(leftSideSignalLocation1);
-
-                        break;
-
-                    case RIGHT:
-                        path.add(rightSideSignalLocation1);
-
-                        break;
-                }
-
-                break;
-
-            case LOCATION2:
-                switch(startingLocation) {
-                    case LEFT:
-                        path.add(leftSideSignalLocation2);
-
-                        break;
-
-                    case RIGHT:
-                        path.add(rightSideSignalLocation2);
-
-                        break;
-                }
-
-                break;
-
-            case LOCATION3:
-                switch(startingLocation) {
-                    case LEFT:
-                        path.add(leftSideSignalLocation3);
-
-                        break;
-
-                    case RIGHT:
-                        path.add(rightSideSignalLocation3);
-
-                        break;
-                }
-
-                break;
+}
 
 
-
-        }
-    }
-     */
 }

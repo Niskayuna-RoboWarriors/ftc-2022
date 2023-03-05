@@ -33,35 +33,25 @@ public class PowerPlayAuton extends LinearOpMode {
             waitMilliseconds(20);
         }
 
-        boolean moving = true;
-        switch (parkingPosition) {
-            case LEFT:
-                robotManager.navigation.setDriveMotorPowers(0, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
-                waitMilliseconds(1175);
-                break;
-            case MIDDLE:
-                moving = false;
-                break;
-            case RIGHT:
-                robotManager.navigation.setDriveMotorPowers(Math.PI, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
-                waitMilliseconds(975);
-        }
+//        telemetry.addData("Path name", navigationPath.toString());
+//        telemetry.addData("AutonomousPaths.CYCLE_HIGH.size()", Navigation.AutonomousPaths.CYCLE_HIGH.size());
+//        telemetry.addData("PowerPlayAuton.navigationPath.size()", PowerPlayAuton.navigationPath.size());
+//        telemetry.addData("robotManager.navigation.path.size()", robotManager.navigation.path.size());
+//        telemetry.update();
 
-        if (moving) {
-            robotManager.navigation.stopMovement(robotManager.robot);
-        }
+        // Transform the path and add the parking location based on the result of cv
+        robotManager.navigation.configurePath(startingSide, parkingPosition);
 
-        // Move forward
-        robotManager.navigation.setDriveMotorPowers(-Math.PI / 2, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
-        waitMilliseconds(1300);
-        robotManager.navigation.stopMovement(robotManager.robot);
+        waitMilliseconds(PowerPlayAuton.waitTime);
+
+        robotManager.runAutonPath();
 
         while (opModeIsActive()) {}
     }
 
-    private void waitMilliseconds(long ms) {
+    public void waitMilliseconds(long ms) {
         double start_time = elapsedTime.time();
-        while (elapsedTime.time() - start_time < ms) {}
+        while (opModeIsActive() && elapsedTime.time() - start_time < ms) {}
     }
 
     // ANDROID SHARED PREFERENCES
@@ -127,12 +117,12 @@ public class PowerPlayAuton extends LinearOpMode {
         }
 
         switch(startingSide) {
-            case "THEIR_COLOR":
-                PowerPlayAuton.startingSide = RobotManager.StartingSide.THEIR_COLOR;
+            case "LEFT":
+                PowerPlayAuton.startingSide = RobotManager.StartingSide.LEFT;
                 break;
 
-            case "OUR_COLOR":
-                PowerPlayAuton.startingSide = RobotManager.StartingSide.OUR_COLOR;
+            case "RIGHT":
+                PowerPlayAuton.startingSide = RobotManager.StartingSide.RIGHT;
                 break;
         }
 
@@ -144,17 +134,23 @@ public class PowerPlayAuton extends LinearOpMode {
         }
 
         switch (autonMode) {
-            case "SMALL":
-                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.SMALL.clone();
-                break;
-            case "MEDIUM":
-                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.MEDIUM.clone();
-                break;
-            case "LARGE":
-                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.LARGE.clone();
+//            case "SMALL":
+//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.SMALL.clone();
+//                break;
+//            case "MEDIUM":
+//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.MEDIUM.clone();
+//                break;
+//            case "LARGE":
+//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.LARGE.clone();
+//                break;
+//            case "PARK_ONLY":
+//                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.PARK_ONLY.clone();
+            case "CYCLE_HIGH":
+                PowerPlayAuton.navigationPath = (ArrayList<Position>) Navigation.AutonomousPaths.CYCLE_HIGH.clone();
                 break;
             case "PARK_ONLY":
-                PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.PARK_ONLY.clone();
+                PowerPlayAuton.navigationPath = new ArrayList<>();
+                break;
         }
     }
 }

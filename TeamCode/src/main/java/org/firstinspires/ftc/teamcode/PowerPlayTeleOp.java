@@ -19,14 +19,14 @@ import java.util.Collections;
 public class PowerPlayTeleOp extends OpMode {
 
     private RobotManager robotManager;
-    private ElapsedTime elapsedTime = new ElapsedTime();
+    private ElapsedTime elapsedTime = new ElapsedTime(ElapsedTime.Resolution.MILLISECONDS);
 
     @Override
     public void init() {
         initSharedPreferences();
         PowerPlayTeleOp.allianceColor = RobotManager.AllianceColor.BLUE;
         robotManager = new RobotManager(hardwareMap, gamepad1, gamepad2, new ArrayList<>(Collections.emptyList()),
-                allianceColor, RobotManager.StartingSide.OUR_COLOR,
+                allianceColor, RobotManager.StartingSide.LEFT,
                 Navigation.MovementMode.STRAFE, telemetry, elapsedTime);
         IMUPositioning.Initialize(this);
     }
@@ -40,11 +40,18 @@ public class PowerPlayTeleOp extends OpMode {
         telemetry.addData("Pos X", robotManager.robot.positionManager.position.getX());
         telemetry.addData("Pos Y", robotManager.robot.positionManager.position.getY());
         telemetry.addData("Pos R", robotManager.robot.positionManager.position.getRotation());
-
+        double start_time = robotManager.elapsedTime.time();
         robotManager.readControllerInputs();
+        telemetry.addData("after read controller inputs", robotManager.elapsedTime.time()-start_time);
         robotManager.readSensorInputs();
-        robotManager.driveMechanisms();
+        telemetry.addData("after read sensor inputs", robotManager.elapsedTime.time()-start_time);
+        robotManager.driveMechanisms(robotManager);
+        telemetry.addData("after drive mechanisms", robotManager.elapsedTime.time()-start_time);
         robotManager.maneuver();
+        telemetry.addData("after maneuver", robotManager.elapsedTime.time()-start_time);
+        robotManager.runSecondarySystem();
+        telemetry.addData("previous secondary system state", robotManager.robot.previousSecondarySystemStatus);
+        telemetry.addData("current seoncary system state", robotManager.robot.secondarySystemStatus);
 
         telemetry.update();
     }
@@ -77,11 +84,11 @@ public class PowerPlayTeleOp extends OpMode {
        else if (allianceColor.equals("RED")) {
            PowerPlayTeleOp.allianceColor = RobotManager.AllianceColor.RED;
        }
-//        if (startingSide.equals("OUR_COLOR")) {
-//            PowerPlayTeleOp.startingSide = RobotManager.StartingSide.OUR_COLOR;
+//        if (startingSide.equals("LEFT")) {
+//            PowerPlayTeleOp.startingSide = RobotManager.StartingSide.LEFT;
 //        }
-//        else if (startingSide.equals("THEIR_COLOR")) {
-//            PowerPlayTeleOp.startingSide = RobotManager.StartingSide.THEIR_COLOR;
+//        else if (startingSide.equals("RIGHT")) {
+//            PowerPlayTeleOp.startingSide = RobotManager.StartingSide.RIGHT;
 //        }
 
        //PowerPlayTeleOp.allianceColor = RobotManager.AllianceColor.BLUE;
