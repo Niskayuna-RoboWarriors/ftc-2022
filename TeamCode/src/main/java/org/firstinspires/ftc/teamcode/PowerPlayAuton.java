@@ -184,13 +184,13 @@ public class PowerPlayAuton extends LinearOpMode {
         if(!parkOnly) {
             placeHighJunction();
             if (PowerPlayAuton.startingSide == RobotManager.StartingSide.LEFT) {
-                move(Math.PI, (long) (0.675 * TILE_TIME), 1); //Move out of large junction area
+                move(Math.PI, (long) (0.67 * TILE_TIME), 1); //Move out of large junction area
             }
             else {
-                move(0, (long) (0.675 * TILE_TIME), 1); //Move out of large junction area
+                move(0, (long) (0.67 * TILE_TIME), 1); //Move out of large junction area
             }
             robotManager.waitMilliseconds(250);
-            move(-Math.PI / 2, (long) (1.05 * TILE_TIME), 1); //go back
+            move(-Math.PI / 2, (long) (1.01 * TILE_TIME), 1); //go back
             robotManager.waitMilliseconds(250);
         }
 
@@ -208,7 +208,8 @@ public class PowerPlayAuton extends LinearOpMode {
         else if(tagOfInterest.id == middle) {
 
         }
-        else if(tagOfInterest.id == right) {
+//        else if(tagOfInterest.id == right) {
+        else {
             if(!parkOnly) {
                 move(0, (long) (1.3 * TILE_TIME), 1); //move to park
                 robotManager.waitMilliseconds(250);
@@ -229,13 +230,13 @@ public class PowerPlayAuton extends LinearOpMode {
     }
 
     private void placeHighJunction() {
-        move(Math.PI / 2, (long) (2.04 * TILE_TIME), 1);
+        move(Math.PI / 2, (long) (2 * TILE_TIME), 1);
         robotManager.waitMilliseconds(250);
         if (PowerPlayAuton.startingSide == RobotManager.StartingSide.LEFT) {
-            move(0, (long) (0.7 * TILE_TIME), 1);
+            move(0, (long) (0.695 * TILE_TIME), 1);
         }
         else {
-            move(Math.PI, (long) (0.7 * TILE_TIME), 1);
+            move(Math.PI, (long) (0.695 * TILE_TIME), 1);
 
         }
         //robotManager.deliverConeHigh(Robot.ClawRotatorState.REAR);
