@@ -131,7 +131,7 @@ public class Navigation {
                 robot.telemetry.update();
 
 //                difference = target.getRotation()-ro  bot.getPosition().getRotation();
-                deadReckoningRotation(robotManager, robot, difference, target.rotatePower);
+                //deadReckoningRotation(robotManager, robot, difference, target.rotatePower); iuhouhiuhiu
                 break;
         }
 
@@ -337,11 +337,11 @@ public class Navigation {
         stopMovement(robot);
     }
 
-    public void deadReckoningRotation(RobotManager robotManager, Robot robot, double time, double power) {
-        setDriveMotorPowers(0.0, 0.0, power, robot, false);
-        robotManager.waitMilliseconds((long) (time*ROTATION_TIME));
-        stopMovement(robot);
-    }
+    //public void deadReckoningRotation(RobotManager robotManager, Robot robot, double time, double power) {
+        //setDriveMotorPowers(0.0, 0.0, power, robot, false);
+        //waitMilliseconds((long) (time*ROTATION_TIME));
+        //stopMovement(robot);
+    //}
 
 
 

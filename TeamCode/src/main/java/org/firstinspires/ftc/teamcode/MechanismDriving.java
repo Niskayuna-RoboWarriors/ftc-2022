@@ -19,7 +19,7 @@ public class MechanismDriving {
        put(Robot.SlidesState.RETRACTED, 0);
        put(Robot.SlidesState.LOW, 1170);
        put(Robot.SlidesState.MEDIUM, 1996);
-       put(Robot.SlidesState.HIGH, 2550);
+       put(Robot.SlidesState.HIGH, 2775);
        put(Robot.SlidesState.UNREADY, 0);
 
        put(Robot.SlidesState.FIRST_STACK_CONE, 500);

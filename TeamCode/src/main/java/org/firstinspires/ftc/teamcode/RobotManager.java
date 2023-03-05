@@ -328,15 +328,15 @@ public class RobotManager {
     /** Determines the position of the capstone on the barcode.
      */
 //    public Robot.ParkingPosition readBarcode() {
-        // Reset the barcode scanning counters and states
+    // Reset the barcode scanning counters and states
 //        robot.barcodeScanResult = Robot.BarcodeScanResult.WRONG_CAPS;
 //        robot.resetBarcodeScanMap();
 //        robot.numBarcodeAttempts = 0;
 //        robot.barcodeScanState = Robot.BarcodeScanState.SCAN;
 
-        // TODO: call CV function
+    // TODO: call CV function
 
-        // Wait for CV to determine a finalized barcodeScanResult value (this is blocking!)
+    // Wait for CV to determine a finalized barcodeScanResult value (this is blocking!)
 //        while (robot.barcodeScanState == Robot.BarcodeScanState.SCAN) {
 //            try {
 //                TimeUnit.MICROSECONDS.sleep(10);
@@ -741,6 +741,17 @@ public class RobotManager {
         }
     }
 
+    public void deliverConeHigh(Robot.ClawRotatorState clawPos) {
+        moveSlides(this, Robot.SlidesState.HIGH);
+        robot.desiredClawRotatorState = clawPos;
+        mechanismDriving.updateClawRotator(robot);
+        double startTime = robot.elapsedTime.time();
+        while (robot.elapsedTime.time()-startTime < 1000) {}
+        openClaw();
+        robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
+        mechanismDriving.updateClawRotator(robot);
+    }
+
     /** Blocking method to raise/lower linear slides during Auton.
      */
     public void moveSlides(RobotManager robotManager, Robot.SlidesState targetSlidesState) {
@@ -838,12 +849,12 @@ public class RobotManager {
      */
     public boolean hasMovementDirection() {
         boolean dpadPressed = (gamepads.getButtonState(GamepadWrapper.DriverAction.MOVE_STRAIGHT_FORWARD)
-                            || gamepads.getButtonState(GamepadWrapper.DriverAction.MOVE_STRAIGHT_BACKWARD)
-                            || gamepads.getButtonState(GamepadWrapper.DriverAction.MOVE_STRAIGHT_LEFT)
-                            || gamepads.getButtonState(GamepadWrapper.DriverAction.MOVE_STRAIGHT_RIGHT));
+                || gamepads.getButtonState(GamepadWrapper.DriverAction.MOVE_STRAIGHT_BACKWARD)
+                || gamepads.getButtonState(GamepadWrapper.DriverAction.MOVE_STRAIGHT_LEFT)
+                || gamepads.getButtonState(GamepadWrapper.DriverAction.MOVE_STRAIGHT_RIGHT));
         double stickDist = Math.sqrt(
                 Math.pow(gamepads.getAnalogValues().gamepad1LeftStickY,2)
-              + Math.pow(gamepads.getAnalogValues().gamepad1LeftStickX,2));
+                        + Math.pow(gamepads.getAnalogValues().gamepad1LeftStickX,2));
         boolean joystickMoved = stickDist >= RobotManager.JOYSTICK_DEAD_ZONE_SIZE;
         return dpadPressed || joystickMoved;
     }

@@ -51,9 +51,10 @@ public class PowerPlayAuton extends LinearOpMode {
     int ID_TAG_OF_INTEREST = 18; // Tag ID 18 from the 36h11 family
 
     AprilTagDetection tagOfInterest = null;
+    private boolean parkOnly = false;
 
-    public void move(double direction, long time) {
-        robotManager.navigation.setDriveMotorPowers(direction, Navigation.MAX_STRAFE_POWER, 0, robotManager.robot, false);
+    public void move(double direction, long time, float power) {
+        robotManager.navigation.setDriveMotorPowers(direction, Navigation.MAX_STRAFE_POWER * power, 0, robotManager.robot, false);
         waitMilliseconds(time);
         robotManager.navigation.stopMovement(robotManager.robot);
     }
@@ -180,25 +181,71 @@ public class PowerPlayAuton extends LinearOpMode {
             telemetry.update();
         }
 
+        if(!parkOnly) {
+            placeHighJunction();
+
+            move(Math.PI, (long) (0.675 * TILE_TIME), 1); //Move out of large junction area
+            robotManager.waitMilliseconds(250);
+            move(-Math.PI / 2, (long) (1 * TILE_TIME), 1); //go back
+            robotManager.waitMilliseconds(250);
+        }
+
         boolean moving = true;
         if(tagOfInterest == null || tagOfInterest.id == left)
         {
-            move(Math.PI, 2*TILE_TIME);
-
+            if(!parkOnly) {
+                move(Math.PI, (long) (1.3 * TILE_TIME), 1); //move to park
+                robotManager.waitMilliseconds(250);
+                move(Math.PI / 2, (long) (0.25 * TILE_TIME), 1);
+            } else {
+                move(Math.PI, (long) (1.3 * TILE_TIME), 1);
+            }
         }
         else if(tagOfInterest.id == middle) {
-//            moving = false;
+
         }
         else if(tagOfInterest.id == right) {
-            move(0, TILE_TIME);
+            if(!parkOnly) {
+                move(0, (long) (1.3 * TILE_TIME), 1); //move to park
+                robotManager.waitMilliseconds(250);
+                move(Math.PI / 2, (long) (0.25 * TILE_TIME), 1);
+            } else {
+                move(0, (long) (1.3 * TILE_TIME), 1);
+            }
         }
 
 //        robotManager.navigation.stopMovement(robotManager.robot);
 
                 // Move forward
-        move(Math.PI/2, (long)(1.2*TILE_TIME));
+        if(parkOnly) {
+            move(Math.PI / 2, (long) (1.2 * TILE_TIME), 1);
+        }
 
         while (opModeIsActive()) {}
+    }
+
+    private void placeHighJunction() {
+        move(Math.PI / 2, (long) (1.99 * TILE_TIME), 1);
+        robotManager.waitMilliseconds(250);
+        move(0, (long) (0.7 * TILE_TIME), 1);
+
+        //robotManager.deliverConeHigh(Robot.ClawRotatorState.REAR);
+        robotManager.moveSlides(robotManager, Robot.SlidesState.HIGH);
+        robotManager.robot.desiredClawRotatorState = Robot.ClawRotatorState.REAR; //CLAW POS HERE
+        robotManager.mechanismDriving.updateClawRotator(robotManager.robot);
+        double startTime = robotManager.robot.elapsedTime.time();
+        while (robotManager.robot.elapsedTime.time()-startTime < 1000) {}
+
+        //move(Math.PI / 2, (long) (0.6 * TILE_TIME), 0.25f);
+
+        //Drop cone
+        robotManager.openClaw();
+        robotManager.robot.desiredClawRotatorState = Robot.ClawRotatorState.FRONT;
+        robotManager.mechanismDriving.updateClawRotator(robotManager.robot);
+
+        robotManager.waitMilliseconds(500);
+
+        robotManager.moveSlides(robotManager, Robot.SlidesState.RETRACTED);
     }
 
     private void waitMilliseconds(long ms) {
@@ -304,10 +351,17 @@ public class PowerPlayAuton extends LinearOpMode {
 //                 PowerPlayAuton.navigationPath = (ArrayList<Position>) AutonomousPaths.PARK_ONLY.clone();
             case "CYCLE_HIGH":
                 PowerPlayAuton.navigationPath = (ArrayList<Position>) Navigation.AutonomousPaths.CYCLE_HIGH.clone();
+                parkOnly = false;
                 break;
             case "PARK_ONLY":
                 PowerPlayAuton.navigationPath = new ArrayList<>();
-                break;        }
+                parkOnly = true;
+                break;
+            case "SINGLE_CONE":
+                PowerPlayAuton.navigationPath = new ArrayList<>();
+                parkOnly = false;
+                break;
+        }
     }
 
     void tagToTelemetry(AprilTagDetection detection)
